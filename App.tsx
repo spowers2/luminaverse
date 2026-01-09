@@ -43,6 +43,7 @@ export default function App() {
   const [currentStreak, setCurrentStreak] = useState(0)
   const [musicEnabled, setMusicEnabled] = useState(false)
   const [sound, setSound] = useState<Audio.Sound | null>(null)
+  const [musicTrack, setMusicTrack] = useState("sp1")
   const [backgroundColor, setBackgroundColor] = useState("#4a7c7e")
   const [bibleVersion, setBibleVersion] = useState("kjv")
   const [wordDefinitionsEnabled, setWordDefinitionsEnabled] = useState(true)
@@ -186,6 +187,12 @@ export default function App() {
   const loadMusicSettings = async () => {
     try {
       const enabled = await AsyncStorage.getItem("@musicEnabled")
+      const track = await AsyncStorage.getItem("@musicTrack")
+
+      if (track) {
+        setMusicTrack(track)
+      }
+
       if (enabled === "true") {
         setMusicEnabled(true)
         await playBackgroundMusic()
@@ -237,36 +244,53 @@ export default function App() {
     }
   }
 
-  const playBackgroundMusic = async () => {
+  const handleMusicTrackChange = async (track: string) => {
+    try {
+      // Stop current sound if playing
+      if (sound) {
+        await sound.stopAsync()
+        await sound.unloadAsync()
+        setSound(null)
+      }
+
+      // Update selected track
+      setMusicTrack(track)
+      await AsyncStorage.setItem("@musicTrack", track)
+
+      // Play new track immediately
+      if (musicEnabled) {
+        await playBackgroundMusic(track)
+      }
+    } catch (err) {
+      console.log("Failed to change music track", err)
+    }
+  }
+
+  const playBackgroundMusic = async (trackOverride?: string) => {
     try {
       await Audio.setAudioModeAsync({
         playsInSilentModeIOS: true,
         staysActiveInBackground: false
       })
 
-      // Try peaceful ambient sounds
-      const audioSources = ["https://actions.google.com/sounds/v1/ambiences/soft_rain_on_a_roof.ogg", "https://actions.google.com/sounds/v1/ambiences/stream_bubbling.ogg", "https://actions.google.com/sounds/v1/ambiences/forest_birds.ogg", "https://actions.google.com/sounds/v1/ambiences/gentle_wind_chimes.ogg"]
+      // Use provided track or fall back to state
+      const trackToPlay = trackOverride || musicTrack
 
-      let soundLoaded = false
-      for (const uri of audioSources) {
-        try {
-          const { sound: newSound } = await Audio.Sound.createAsync({ uri }, { shouldPlay: true, isLooping: true, volume: 0.3 })
-          setSound(newSound)
-          soundLoaded = true
-          break
-        } catch (err) {
-          console.log(`Failed to load from ${uri}:`, err)
-        }
+      // Map track IDs to audio files
+      const audioFiles: Record<string, any> = {
+        sp1: require("./assets/audio/sp1.mp3"),
+        swl1: require("./assets/audio/swl1.mp3"),
+        zs1: require("./assets/audio/zs1.mp3")
       }
 
-      if (!soundLoaded) {
-        throw new Error("All audio sources failed")
-      }
+      const selectedAudio = audioFiles[trackToPlay]
+      const { sound: newSound } = await Audio.Sound.createAsync(selectedAudio, { shouldPlay: true, isLooping: true, volume: 0.3 })
+      setSound(newSound)
     } catch (error) {
-      console.log("Music not available in Expo Go:", error)
+      console.log("Failed to load background music:", error)
       setMusicEnabled(false)
       await AsyncStorage.setItem("@musicEnabled", "false")
-      Alert.alert("Feature Unavailable", "Background music is not available in Expo Go but will work in the production app.")
+      Alert.alert("Music Unavailable", "Unable to load background music. Please try again.")
     }
   }
 
@@ -712,10 +736,30 @@ export default function App() {
         <View style={styles.settingRow}>
           <View style={styles.settingInfo}>
             <Text style={styles.settingLabel}>Meditation Music</Text>
-            <Text style={styles.settingDescription}>Available in production build only</Text>
           </View>
           <Switch value={musicEnabled} onValueChange={toggleMusic} trackColor={{ false: "rgba(255,255,255,0.2)", true: "#81b0ff" }} thumbColor={musicEnabled ? "#4a7c7e" : "#f4f3f4"} />
         </View>
+        {musicEnabled && (
+          <View style={{ marginTop: 12 }}>
+            <Text style={styles.aboutText}>Select track:</Text>
+            {[
+              { id: "sp1", name: "Spiritual Piano", emoji: "🎹" },
+              { id: "swl1", name: "Soft Worship", emoji: "🙏" },
+              { id: "zs1", name: "Zen Strings", emoji: "🎻" }
+            ].map(track => (
+              <TouchableOpacity key={track.id} style={[styles.musicTrackButton, musicTrack === track.id && styles.musicTrackButtonActive]} onPress={() => handleMusicTrackChange(track.id)}>
+                <View style={{ flexDirection: "row", alignItems: "center", flex: 1 }}>
+                  <Text style={{ fontSize: 20, marginRight: 10 }}>{track.emoji}</Text>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.musicTrackName, musicTrack === track.id && styles.musicTrackNameActive]}>{track.name}</Text>
+                    {musicTrack === track.id && <Text style={styles.nowPlayingText}>♪ Now Playing</Text>}
+                  </View>
+                </View>
+                {musicTrack === track.id && <Feather name="volume-2" size={18} color="#4a7c7e" />}
+              </TouchableOpacity>
+            ))}
+          </View>
+        )}
       </View>
 
       <View style={styles.aboutSection}>
@@ -1366,5 +1410,35 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: "600",
     color: "#fff"
+  },
+  musicTrackButton: {
+    backgroundColor: "rgba(255, 255, 255, 0.1)",
+    padding: 14,
+    borderRadius: 12,
+    marginVertical: 6,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    borderWidth: 2,
+    borderColor: "transparent"
+  },
+  musicTrackButtonActive: {
+    backgroundColor: "rgba(255, 255, 255, 0.2)",
+    borderColor: "#4a7c7e"
+  },
+  musicTrackName: {
+    fontSize: 16,
+    color: "rgba(255, 255, 255, 0.8)",
+    fontWeight: "500"
+  },
+  musicTrackNameActive: {
+    color: "#fff",
+    fontWeight: "600"
+  },
+  nowPlayingText: {
+    fontSize: 12,
+    color: "#4a7c7e",
+    marginTop: 2,
+    fontStyle: "italic"
   }
 })
