@@ -7,6 +7,8 @@ A beautiful, minimalist Bible verse mobile app for iOS and Android. Experience d
 ### Core Features
 
 - 📖 **Random Bible Verses** - Fresh scripture every time you open the app
+- 🏷️ **Topics** - Browse 100 curated verses by theme (Faith, Love, Peace, Hope, Courage, Wisdom, Joy, Forgiveness, Kindness, Patience)
+- 🖼️ **Save as Wallpaper** - Create beautiful lock screen images with gradient backgrounds
 - ⭐ **Favorites/Bookmarks** - Save meaningful verses for later
 - 🔥 **Reading Streaks** - Track consecutive days of reading with gold badge
 - 🔔 **Daily Notifications** - Customizable reminder time for daily inspiration

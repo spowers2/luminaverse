@@ -74,21 +74,31 @@ Download LuminaVerse today and transform your daily routine with meaningful scri
 
 _Bible verses provided by bible-api.com and labs.bible.org using public domain translations._
 
-## What's New (Version 1.0.0)
+## What's New (Version 1.2.0)
 
-🎉 Initial Release
+✨ Major Update: Topics & Wallpapers
 
-Welcome to LuminaVerse! This first version includes:
+We're excited to bring you two powerful new features:
 
-- Random Bible verse display with beautiful animations
-- Favorites/bookmarks for saving meaningful verses
-- Reading streak tracking to build daily habits
-- Customizable daily notification reminders
-- Optional peaceful background music
-- Easy verse sharing
-- Offline access to saved content
+**🏷️ Browse by Topic**
+- Explore 100 curated verses across 10 spiritual themes
+- Topics include Faith, Love, Peace, Hope, Courage, Wisdom, Joy, Forgiveness, Kindness, and Patience
+- Each topic shows 5 random verses for fresh inspiration
+- Beautiful icon grid for easy navigation
 
-Thank you for downloading LuminaVerse. We hope it brings daily inspiration to your spiritual journey!
+**🖼️ Save as Wallpaper**
+- Create stunning lock screen images from your favorite verses
+- Time-based gradient backgrounds (sunrise, ocean, dusk, twilight)
+- Large, readable text perfect for lock screens
+- Works for any verse - home screen or topics
+- Save directly to your Photos library
+
+Plus all the features you love:
+- Random Bible verses with animations
+- Favorites and reading streaks
+- Daily reminders
+- Background music
+- Offline access
 
 ## App Store Review Notes
 

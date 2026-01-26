@@ -2,7 +2,7 @@
 
 **Last Updated:** January 25, 2026  
 **App Version:** 1.2.0  
-**Status:** In development - planning next update
+**Status:** Ready for submission - v1.2.0 complete
 
 ---
 
@@ -28,7 +28,10 @@ LuminaVerse is a **feature-complete**, **well-polished** Bible verse mobile app 
 - ✅ Dual API fallback (bible-api.com → labs.bible.org)
 - ✅ Error handling and retry logic
 - ✅ Pull-to-refresh functionality
-- ✅ Three-screen navigation (Home/Favorites/Settings)
+- ✅ Four-screen navigation (Home/Favorites/Topics/Settings)
+- ✅ Topics feature with 100 curated verses across 10 themes
+- ✅ Save as wallpaper with beautiful gradient backgrounds
+- ✅ Time-based gradient themes for wallpaper images
 
 ### Technical Implementation (100% Complete)
 

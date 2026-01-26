@@ -893,11 +893,7 @@ export default function App() {
                   <Text style={styles.topicVerseText}>"{item.text}"</Text>
                   <Text style={styles.topicVerseReference}>{item.reference}</Text>
                   <View style={styles.topicVerseActions}>
-                    <TouchableOpacity
-                      style={styles.topicVerseActionButton}
-                      onPress={() => handleSaveTopicVerseAsImage(index)}
-                      disabled={savingTopicVerseIndex === index}
-                    >
+                    <TouchableOpacity style={styles.topicVerseActionButton} onPress={() => handleSaveTopicVerseAsImage(index)} disabled={savingTopicVerseIndex === index}>
                       <Feather name={savingTopicVerseIndex === index ? "loader" : "image"} size={16} color="rgba(255, 255, 255, 0.7)" />
                       <Text style={styles.topicVerseShareText}>Save</Text>
                     </TouchableOpacity>
@@ -917,11 +913,7 @@ export default function App() {
                 </View>
 
                 {/* Hidden wallpaper view for this verse */}
-                <View
-                  style={styles.wallpaperView}
-                  ref={ref => (topicWallpaperViewRefs.current[index] = ref)}
-                  collapsable={false}
-                >
+                <View style={styles.wallpaperView} ref={ref => (topicWallpaperViewRefs.current[index] = ref)} collapsable={false}>
                   <LinearGradient
                     colors={(() => {
                       const hour = new Date().getHours()
@@ -944,18 +936,39 @@ export default function App() {
                     style={styles.wallpaperContainer}
                   >
                     <View style={styles.wallpaperContent}>
-                      <Text style={[styles.wallpaperVerse, (() => {
-                        const hour = new Date().getHours()
-                        return hour >= 20 || hour < 6 ? { color: "#ffffff" } : { color: "#1a1a2e" }
-                      })()]}>"{item.text}"</Text>
-                      <Text style={[styles.wallpaperReference, (() => {
-                        const hour = new Date().getHours()
-                        return hour >= 20 || hour < 6 ? { color: "rgba(255,255,255,0.85)" } : { color: "rgba(26,26,46,0.85)" }
-                      })()]}>— {item.reference}</Text>
-                      <Text style={[styles.wallpaperBranding, (() => {
-                        const hour = new Date().getHours()
-                        return hour >= 20 || hour < 6 ? { color: "rgba(255,255,255,0.5)" } : { color: "rgba(26,26,46,0.5)" }
-                      })()]}>LuminaVerse</Text>
+                      <Text
+                        style={[
+                          styles.wallpaperVerse,
+                          (() => {
+                            const hour = new Date().getHours()
+                            return hour >= 20 || hour < 6 ? { color: "#ffffff" } : { color: "#1a1a2e" }
+                          })()
+                        ]}
+                      >
+                        "{item.text}"
+                      </Text>
+                      <Text
+                        style={[
+                          styles.wallpaperReference,
+                          (() => {
+                            const hour = new Date().getHours()
+                            return hour >= 20 || hour < 6 ? { color: "rgba(255,255,255,0.85)" } : { color: "rgba(26,26,46,0.85)" }
+                          })()
+                        ]}
+                      >
+                        — {item.reference}
+                      </Text>
+                      <Text
+                        style={[
+                          styles.wallpaperBranding,
+                          (() => {
+                            const hour = new Date().getHours()
+                            return hour >= 20 || hour < 6 ? { color: "rgba(255,255,255,0.5)" } : { color: "rgba(26,26,46,0.5)" }
+                          })()
+                        ]}
+                      >
+                        LuminaVerse
+                      </Text>
                     </View>
                   </LinearGradient>
                 </View>
