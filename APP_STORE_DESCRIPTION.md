@@ -81,12 +81,14 @@ _Bible verses provided by bible-api.com and labs.bible.org using public domain t
 We're excited to bring you two powerful new features:
 
 **🏷️ Browse by Topic**
+
 - Explore 100 curated verses across 10 spiritual themes
 - Topics include Faith, Love, Peace, Hope, Courage, Wisdom, Joy, Forgiveness, Kindness, and Patience
 - Each topic shows 5 random verses for fresh inspiration
 - Beautiful icon grid for easy navigation
 
 **🖼️ Save as Wallpaper**
+
 - Create stunning lock screen images from your favorite verses
 - Time-based gradient backgrounds (sunrise, ocean, dusk, twilight)
 - Large, readable text perfect for lock screens
@@ -94,6 +96,7 @@ We're excited to bring you two powerful new features:
 - Save directly to your Photos library
 
 Plus all the features you love:
+
 - Random Bible verses with animations
 - Favorites and reading streaks
 - Daily reminders
