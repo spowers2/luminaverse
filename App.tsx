@@ -9,6 +9,8 @@ import DateTimePicker from "@react-native-community/datetimepicker"
 import { Accelerometer } from "expo-sensors"
 import { getWordDefinition, type WordDefinition } from "./wordDefinitions"
 import { topics, topicalVerses, getVersesByTopic, getRandomVerseFromTopic, type Topic, type TopicalVerse } from "./topicalVerses"
+import * as MediaLibrary from "expo-media-library"
+import { captureRef } from "react-native-view-shot"
 
 interface Verse {
   text: string
@@ -52,9 +54,11 @@ export default function App() {
   const [showWordModal, setShowWordModal] = useState(false)
   const [selectedTopic, setSelectedTopic] = useState<Topic | null>(null)
   const [topicVerses, setTopicVerses] = useState<TopicalVerse[]>([])
+  const [savingImage, setSavingImage] = useState(false)
   const fadeAnim = useRef(new Animated.Value(0)).current
   const scaleAnim = useRef(new Animated.Value(0.8)).current
   const pulseAnim = useRef(new Animated.Value(1)).current
+  const wallpaperViewRef = useRef<View>(null)
 
   useEffect(() => {
     loadFavorites()
@@ -583,6 +587,47 @@ export default function App() {
     }
   }
 
+  const handleSaveAsImage = async () => {
+    if (!verse || !wallpaperViewRef.current) return
+
+    setSavingImage(true)
+
+    try {
+      // Request media library permissions
+      const { status } = await MediaLibrary.requestPermissionsAsync()
+      
+      if (status !== "granted") {
+        Alert.alert("Permission Required", "Please grant photo library access to save verse images.")
+        setSavingImage(false)
+        return
+      }
+
+      // Capture the wallpaper view as image
+      const uri = await captureRef(wallpaperViewRef, {
+        format: "png",
+        quality: 1,
+        width: 1170,
+        height: 2532
+      })
+
+      // Save to media library
+      await MediaLibrary.saveToLibraryAsync(uri)
+
+      // Show success message
+      Alert.alert(
+        "✓ Saved to Photos",
+        "Your verse image has been saved! Set it as wallpaper in Settings → Wallpaper → Choose Photo.",
+        [{ text: "OK" }]
+      )
+
+    } catch (error) {
+      console.error("Error saving image:", error)
+      Alert.alert("Error", "Failed to save image. Please try again.")
+    } finally {
+      setSavingImage(false)
+    }
+  }
+
   const renderHome = () => (
     <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor="#fff" colors={["#fff"]} />}>
       {/* Logo and Header */}
@@ -638,6 +683,10 @@ export default function App() {
             <Feather name={isFavorite ? "heart" : "heart"} size={20} color={isFavorite ? "#ff6b6b" : "rgba(255, 255, 255, 0.9)"} style={isFavorite ? { fill: "#ff6b6b" } : {}} />
           </TouchableOpacity>
 
+          <TouchableOpacity style={[styles.button, styles.iconButton, (!verse || savingImage) && styles.buttonDisabled]} onPress={handleSaveAsImage} disabled={!verse || savingImage}>
+            <Feather name={savingImage ? "loader" : "image"} size={20} color="rgba(255, 255, 255, 0.9)" />
+          </TouchableOpacity>
+
           <TouchableOpacity style={[styles.button, styles.mainButton, loading && styles.buttonDisabled]} onPress={handleNewVerse} disabled={loading}>
             <Feather name="refresh-cw" size={20} color="rgba(255, 255, 255, 0.9)" />
             <Text style={styles.buttonText}>New Verse</Text>
@@ -648,6 +697,63 @@ export default function App() {
           </TouchableOpacity>
         </View>
       </View>
+
+      {/* Hidden Wallpaper View for Image Generation */}
+      {verse && (
+        <View
+          style={styles.wallpaperView}
+          ref={wallpaperViewRef}
+          collapsable={false}
+        >
+          {/* Auto-detect time of day for background */}
+          <View style={[
+            styles.wallpaperContainer,
+            (() => {
+              const hour = new Date().getHours()
+              if (hour >= 21 || hour < 6) {
+                // Night: Dark background
+                return { backgroundColor: "#1a1a2e" }
+              } else if (hour >= 6 && hour < 12) {
+                // Morning: Light background
+                return { backgroundColor: "#f5f5f5" }
+              } else {
+                // Afternoon/Evening: Gradient effect using backgroundColor
+                return { backgroundColor: backgroundColor }
+              }
+            })()
+          ]}>
+            <View style={styles.wallpaperContent}>
+              <Text style={[
+                styles.wallpaperVerse,
+                (() => {
+                  const hour = new Date().getHours()
+                  return (hour >= 21 || hour < 6) ? { color: "#ffffff" } : { color: "#1a1a2e" }
+                })()
+              ]}>
+                "{verse.text}"
+              </Text>
+              <Text style={[
+                styles.wallpaperReference,
+                (() => {
+                  const hour = new Date().getHours()
+                  return (hour >= 21 || hour < 6) ? { color: "rgba(255,255,255,0.7)" } : { color: "rgba(26,26,46,0.7)" }
+                })()
+              ]}>
+                — {verse.reference}
+              </Text>
+              <Text style={[
+                styles.wallpaperBranding,
+                (() => {
+                  const hour = new Date().getHours()
+                  return (hour >= 21 || hour < 6) ? { color: "rgba(255,255,255,0.4)" } : { color: "rgba(26,26,46,0.4)" }
+                })()
+              ]}>
+                LuminaVerse
+              </Text>
+            </View>
+          </View>
+        </View>
+      )}
     </ScrollView>
   )
 
@@ -776,11 +882,11 @@ export default function App() {
                 onPress={() => {
                   // Get all verses for this topic
                   const allVerses = getVersesByTopic(topic.id)
-                  
+
                   // Shuffle and take 5 random verses
                   const shuffled = [...allVerses].sort(() => Math.random() - 0.5)
                   const randomFive = shuffled.slice(0, 5)
-                  
+
                   setSelectedTopic(topic)
                   setTopicVerses(randomFive)
                 }}
@@ -1660,5 +1766,45 @@ const styles = StyleSheet.create({
     color: "rgba(255, 255, 255, 0.7)",
     marginLeft: 6,
     fontWeight: "500"
+  },
+  // Wallpaper image generation styles
+  wallpaperView: {
+    position: "absolute",
+    left: -10000, // Hide off-screen
+    width: 1170,
+    height: 2532
+  },
+  wallpaperContainer: {
+    width: 1170,
+    height: 2532,
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 60
+  },
+  wallpaperContent: {
+    width: "100%",
+    alignItems: "center",
+    justifyContent: "center"
+  },
+  wallpaperVerse: {
+    fontSize: 36,
+    fontWeight: "400",
+    lineHeight: 52,
+    textAlign: "center",
+    marginBottom: 40,
+    paddingHorizontal: 40
+  },
+  wallpaperReference: {
+    fontSize: 24,
+    fontWeight: "500",
+    textAlign: "center",
+    marginBottom: 60
+  },
+  wallpaperBranding: {
+    fontSize: 18,
+    fontWeight: "300",
+    textAlign: "center",
+    position: "absolute",
+    bottom: 80
   }
 })

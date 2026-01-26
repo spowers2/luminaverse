@@ -16,7 +16,9 @@
       "supportsTablet": true,
       "bundleIdentifier": "com.labazine.luminaverse",
       "infoPlist": {
-        "ITSAppUsesNonExemptEncryption": false
+        "ITSAppUsesNonExemptEncryption": false,
+        "NSPhotoLibraryUsageDescription": "LuminaVerse needs access to save beautiful verse images to your Photos.",
+        "NSPhotoLibraryAddUsageDescription": "LuminaVerse needs access to save beautiful verse images to your Photos."
       }
     },
     "android": {
@@ -25,7 +27,11 @@
         "backgroundColor": "#4a7c7e"
       },
       "package": "com.labazine.luminaverse",
-      "permissions": ["android.permission.SCHEDULE_EXACT_ALARM"]
+      "permissions": [
+        "android.permission.SCHEDULE_EXACT_ALARM",
+        "android.permission.READ_MEDIA_IMAGES",
+        "android.permission.WRITE_EXTERNAL_STORAGE"
+      ]
     },
     "plugins": [
       [
@@ -33,6 +39,14 @@
         {
           "icon": "./assets/icon.png",
           "color": "#4a7c7e"
+        }
+      ],
+      [
+        "expo-media-library",
+        {
+          "photosPermission": "Allow LuminaVerse to save beautiful verse images to your Photos.",
+          "savePhotosPermission": "Allow LuminaVerse to save beautiful verse images to your Photos.",
+          "isAccessMediaLocationEnabled": true
         }
       ]
     ],
