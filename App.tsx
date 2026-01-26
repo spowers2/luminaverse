@@ -722,6 +722,7 @@ export default function App() {
               </View>
               <Text style={styles.topicDetailTitle}>{selectedTopic.name}</Text>
               <Text style={styles.topicDetailDescription}>{selectedTopic.description}</Text>
+              <Text style={styles.topicDetailSubtext}>Showing 5 random verses • Tap back for new selection</Text>
             </View>
           </View>
 
@@ -773,8 +774,15 @@ export default function App() {
                 key={topic.id}
                 style={styles.topicCard}
                 onPress={() => {
+                  // Get all verses for this topic
+                  const allVerses = getVersesByTopic(topic.id)
+                  
+                  // Shuffle and take 5 random verses
+                  const shuffled = [...allVerses].sort(() => Math.random() - 0.5)
+                  const randomFive = shuffled.slice(0, 5)
+                  
                   setSelectedTopic(topic)
-                  setTopicVerses(getVersesByTopic(topic.id))
+                  setTopicVerses(randomFive)
                 }}
               >
                 <View style={[styles.topicIcon, { backgroundColor: topic.color }]}>
@@ -1606,6 +1614,13 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: "rgba(255, 255, 255, 0.7)",
     textAlign: "center"
+  },
+  topicDetailSubtext: {
+    fontSize: 12,
+    color: "rgba(255, 255, 255, 0.5)",
+    textAlign: "center",
+    marginTop: 8,
+    fontStyle: "italic"
   },
   topicVersesList: {
     padding: 16,
