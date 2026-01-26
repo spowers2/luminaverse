@@ -8,6 +8,7 @@ import { Audio } from "expo-av"
 import DateTimePicker from "@react-native-community/datetimepicker"
 import { Accelerometer } from "expo-sensors"
 import { getWordDefinition, type WordDefinition } from "./wordDefinitions"
+import { topics, topicalVerses, getVersesByTopic, getRandomVerseFromTopic, type Topic, type TopicalVerse } from "./topicalVerses"
 
 interface Verse {
   text: string
@@ -19,7 +20,7 @@ interface SavedVerse extends Verse {
   savedAt: number
 }
 
-type Screen = "home" | "favorites" | "settings"
+type Screen = "home" | "favorites" | "topics" | "settings"
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
@@ -49,6 +50,8 @@ export default function App() {
   const [wordDefinitionsEnabled, setWordDefinitionsEnabled] = useState(true)
   const [selectedWordDef, setSelectedWordDef] = useState<WordDefinition | null>(null)
   const [showWordModal, setShowWordModal] = useState(false)
+  const [selectedTopic, setSelectedTopic] = useState<Topic | null>(null)
+  const [topicVerses, setTopicVerses] = useState<TopicalVerse[]>([])
   const fadeAnim = useRef(new Animated.Value(0)).current
   const scaleAnim = useRef(new Animated.Value(0.8)).current
   const pulseAnim = useRef(new Animated.Value(1)).current
@@ -704,6 +707,91 @@ export default function App() {
     </View>
   )
 
+  const renderTopics = () => {
+    // If a topic is selected, show the topic detail view
+    if (selectedTopic) {
+      return (
+        <View style={styles.screenContainer}>
+          <View style={styles.topicDetailHeader}>
+            <TouchableOpacity onPress={() => setSelectedTopic(null)} style={styles.backButton}>
+              <Feather name="arrow-left" size={24} color="rgba(255, 255, 255, 0.9)" />
+            </TouchableOpacity>
+            <View style={styles.topicHeaderContent}>
+              <View style={[styles.topicIconLarge, { backgroundColor: selectedTopic.color }]}>
+                <Feather name={selectedTopic.icon as any} size={32} color="#fff" />
+              </View>
+              <Text style={styles.topicDetailTitle}>{selectedTopic.name}</Text>
+              <Text style={styles.topicDetailDescription}>{selectedTopic.description}</Text>
+            </View>
+          </View>
+
+          <FlatList
+            data={topicVerses}
+            keyExtractor={(item, index) => `${item.reference}-${index}`}
+            contentContainerStyle={styles.topicVersesList}
+            ListEmptyComponent={
+              <View style={styles.emptyContainer}>
+                <Feather name="book" size={48} color="rgba(255, 255, 255, 0.3)" />
+                <Text style={styles.emptyText}>No verses found</Text>
+              </View>
+            }
+            renderItem={({ item }) => (
+              <View style={styles.topicVerseCard}>
+                <Text style={styles.topicVerseText}>"{item.text}"</Text>
+                <Text style={styles.topicVerseReference}>{item.reference}</Text>
+                <TouchableOpacity
+                  style={styles.topicVerseShareButton}
+                  onPress={() => {
+                    Share.share({
+                      message: `"${item.text}"\n\n— ${item.reference}`,
+                      title: "Bible Verse"
+                    })
+                  }}
+                >
+                  <Feather name="share-2" size={16} color="rgba(255, 255, 255, 0.7)" />
+                  <Text style={styles.topicVerseShareText}>Share</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+          />
+        </View>
+      )
+    }
+
+    // Otherwise, show the topics grid
+    return (
+      <View style={styles.screenContainer}>
+        <View style={styles.screenHeader}>
+          <Text style={styles.screenTitle}>Topics</Text>
+          <Text style={styles.screenSubtitle}>Explore verses by theme</Text>
+        </View>
+        <ScrollView contentContainerStyle={styles.topicsGrid} showsVerticalScrollIndicator={false}>
+          {topics.map(topic => {
+            const verseCount = getVersesByTopic(topic.id).length
+            return (
+              <TouchableOpacity
+                key={topic.id}
+                style={styles.topicCard}
+                onPress={() => {
+                  setSelectedTopic(topic)
+                  setTopicVerses(getVersesByTopic(topic.id))
+                }}
+              >
+                <View style={[styles.topicIcon, { backgroundColor: topic.color }]}>
+                  <Feather name={topic.icon as any} size={28} color="#fff" />
+                </View>
+                <Text style={styles.topicName}>{topic.name}</Text>
+                <Text style={styles.topicCount}>
+                  {verseCount} verse{verseCount !== 1 ? "s" : ""}
+                </Text>
+              </TouchableOpacity>
+            )
+          })}
+        </ScrollView>
+      </View>
+    )
+  }
+
   const renderSettings = () => (
     <ScrollView style={styles.screenContainer} contentContainerStyle={styles.aboutContent}>
       <View style={styles.screenHeader}>
@@ -839,7 +927,7 @@ export default function App() {
 
       <View style={styles.aboutSection}>
         <Text style={styles.aboutSectionTitle}>App Info</Text>
-        <Text style={styles.aboutText}>Version 1.0.0</Text>
+        <Text style={styles.aboutText}>Version 1.2.0</Text>
         <Text style={styles.aboutText}>© 2026 Labazine</Text>
       </View>
 
@@ -861,6 +949,7 @@ export default function App() {
 
       {currentScreen === "home" && renderHome()}
       {currentScreen === "favorites" && renderFavorites()}
+      {currentScreen === "topics" && renderTopics()}
       {currentScreen === "settings" && renderSettings()}
 
       {/* Bottom Navigation */}
@@ -873,6 +962,11 @@ export default function App() {
         <TouchableOpacity style={styles.navItem} onPress={() => setCurrentScreen("favorites")}>
           <Feather name="heart" size={24} color={currentScreen === "favorites" ? "#fff" : "rgba(255, 255, 255, 0.5)"} />
           <Text style={[styles.navLabel, currentScreen === "favorites" && styles.navLabelActive]}>Favorites</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity style={styles.navItem} onPress={() => setCurrentScreen("topics")}>
+          <Feather name="book-open" size={24} color={currentScreen === "topics" ? "#fff" : "rgba(255, 255, 255, 0.5)"} />
+          <Text style={[styles.navLabel, currentScreen === "topics" && styles.navLabelActive]}>Topics</Text>
         </TouchableOpacity>
 
         <TouchableOpacity style={styles.navItem} onPress={() => setCurrentScreen("settings")}>
@@ -1440,5 +1534,116 @@ const styles = StyleSheet.create({
     color: "#4a7c7e",
     marginTop: 2,
     fontStyle: "italic"
+  },
+  // Topics screen styles
+  topicsGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    padding: 8,
+    paddingBottom: 100
+  },
+  topicCard: {
+    width: "47%",
+    backgroundColor: "rgba(255, 255, 255, 0.1)",
+    borderRadius: 16,
+    padding: 20,
+    margin: "1.5%",
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.15)"
+  },
+  topicIcon: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    justifyContent: "center",
+    alignItems: "center",
+    marginBottom: 12
+  },
+  topicName: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: "#fff",
+    marginBottom: 4,
+    textAlign: "center"
+  },
+  topicCount: {
+    fontSize: 12,
+    color: "rgba(255, 255, 255, 0.6)"
+  },
+  // Topic detail screen styles
+  topicDetailHeader: {
+    padding: 20,
+    paddingTop: 60,
+    alignItems: "center",
+    borderBottomWidth: 1,
+    borderBottomColor: "rgba(255, 255, 255, 0.1)"
+  },
+  backButton: {
+    position: "absolute",
+    top: 60,
+    left: 20,
+    padding: 8
+  },
+  topicHeaderContent: {
+    alignItems: "center"
+  },
+  topicIconLarge: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    justifyContent: "center",
+    alignItems: "center",
+    marginBottom: 16
+  },
+  topicDetailTitle: {
+    fontSize: 28,
+    fontWeight: "700",
+    color: "#fff",
+    marginBottom: 8
+  },
+  topicDetailDescription: {
+    fontSize: 14,
+    color: "rgba(255, 255, 255, 0.7)",
+    textAlign: "center"
+  },
+  topicVersesList: {
+    padding: 16,
+    paddingBottom: 100
+  },
+  topicVerseCard: {
+    backgroundColor: "rgba(255, 255, 255, 0.1)",
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.15)"
+  },
+  topicVerseText: {
+    fontSize: 15,
+    color: "#fff",
+    lineHeight: 22,
+    marginBottom: 8
+  },
+  topicVerseReference: {
+    fontSize: 13,
+    color: "rgba(255, 255, 255, 0.6)",
+    fontStyle: "italic",
+    marginBottom: 10
+  },
+  topicVerseShareButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    alignSelf: "flex-start",
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    backgroundColor: "rgba(255, 255, 255, 0.1)",
+    borderRadius: 6
+  },
+  topicVerseShareText: {
+    fontSize: 12,
+    color: "rgba(255, 255, 255, 0.7)",
+    marginLeft: 6,
+    fontWeight: "500"
   }
 })

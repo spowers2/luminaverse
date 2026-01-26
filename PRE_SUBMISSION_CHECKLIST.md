@@ -2,8 +2,8 @@
 
 ## Status: READY FOR BUILD (Pending Icon Installation)
 
-**Date:** January 5, 2026  
-**Version:** 1.0.0  
+**Date:** January 25, 2026  
+**Version:** 1.2.0  
 **Build Ready:** Yes (after icon installation)
 
 ---

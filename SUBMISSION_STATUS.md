@@ -1,8 +1,8 @@
 # 📊 LuminaVerse: App Store Submission Status
 
-**Last Updated:** January 5, 2026  
-**App Version:** 1.0.0  
-**Status:** Ready for submission (pending custom icon & developer accounts)
+**Last Updated:** January 25, 2026  
+**App Version:** 1.2.0  
+**Status:** In development - planning next update
 
 ---
 
@@ -81,7 +81,6 @@ LuminaVerse is a **feature-complete**, **well-polished** Bible verse mobile app 
 ### Critical (Required Before Submission)
 
 1. **Custom App Icon** 🎨
-
    - Status: Using default Expo placeholder
    - Required: 1024x1024px icon.png and adaptive-icon.png
    - Impact: **Automatic rejection without custom icon**
@@ -90,7 +89,6 @@ LuminaVerse is a **feature-complete**, **well-polished** Bible verse mobile app 
    - Guide: See ICON_DESIGN_GUIDE.md
 
 2. **Privacy Policy URL** 🔒
-
    - Status: Policy written, needs hosting
    - Required: Public URL for privacy policy
    - Options:
@@ -102,7 +100,6 @@ LuminaVerse is a **feature-complete**, **well-polished** Bible verse mobile app 
    - Cost: Free
 
 3. **Apple Developer Account** 🍎
-
    - Status: Unknown if you have one
    - Required: For iOS App Store submission
    - Cost: $99/year
@@ -119,7 +116,6 @@ LuminaVerse is a **feature-complete**, **well-polished** Bible verse mobile app 
 ### Recommended (But Not Blocking)
 
 5. **Website/Landing Page** 🌐
-
    - Status: Not created
    - Purpose: Marketing, support, privacy policy hosting
    - Options:
