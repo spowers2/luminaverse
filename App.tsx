@@ -56,10 +56,12 @@ export default function App() {
   const [selectedTopic, setSelectedTopic] = useState<Topic | null>(null)
   const [topicVerses, setTopicVerses] = useState<TopicalVerse[]>([])
   const [savingImage, setSavingImage] = useState(false)
+  const [savingTopicVerseIndex, setSavingTopicVerseIndex] = useState<number | null>(null)
   const fadeAnim = useRef(new Animated.Value(0)).current
   const scaleAnim = useRef(new Animated.Value(0.8)).current
   const pulseAnim = useRef(new Animated.Value(1)).current
   const wallpaperViewRef = useRef<View>(null)
+  const topicWallpaperViewRefs = useRef<{ [key: number]: View | null }>({})
 
   useEffect(() => {
     loadFavorites()
@@ -624,6 +626,39 @@ export default function App() {
     }
   }
 
+  const handleSaveTopicVerseAsImage = async (verseIndex: number) => {
+    const viewRef = topicWallpaperViewRefs.current[verseIndex]
+    if (!viewRef) return
+
+    setSavingTopicVerseIndex(verseIndex)
+
+    try {
+      const { status } = await MediaLibrary.requestPermissionsAsync()
+
+      if (status !== "granted") {
+        Alert.alert("Permission Required", "Please grant photo library access to save verse images.")
+        setSavingTopicVerseIndex(null)
+        return
+      }
+
+      const uri = await captureRef(viewRef, {
+        format: "png",
+        quality: 1,
+        width: 1170,
+        height: 2532
+      })
+
+      await MediaLibrary.saveToLibraryAsync(uri)
+
+      Alert.alert("✓ Saved to Photos", "Your verse image has been saved! Set it as wallpaper in Settings → Wallpaper → Choose Photo.", [{ text: "OK" }])
+    } catch (error) {
+      console.error("Error saving image:", error)
+      Alert.alert("Error", "Failed to save image. Please try again.")
+    } finally {
+      setSavingTopicVerseIndex(null)
+    }
+  }
+
   const renderHome = () => (
     <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor="#fff" colors={["#fff"]} />}>
       {/* Logo and Header */}
@@ -852,23 +887,79 @@ export default function App() {
                 <Text style={styles.emptyText}>No verses found</Text>
               </View>
             }
-            renderItem={({ item }) => (
-              <View style={styles.topicVerseCard}>
-                <Text style={styles.topicVerseText}>"{item.text}"</Text>
-                <Text style={styles.topicVerseReference}>{item.reference}</Text>
-                <TouchableOpacity
-                  style={styles.topicVerseShareButton}
-                  onPress={() => {
-                    Share.share({
-                      message: `"${item.text}"\n\n— ${item.reference}`,
-                      title: "Bible Verse"
-                    })
-                  }}
+            renderItem={({ item, index }) => (
+              <>
+                <View style={styles.topicVerseCard}>
+                  <Text style={styles.topicVerseText}>"{item.text}"</Text>
+                  <Text style={styles.topicVerseReference}>{item.reference}</Text>
+                  <View style={styles.topicVerseActions}>
+                    <TouchableOpacity
+                      style={styles.topicVerseActionButton}
+                      onPress={() => handleSaveTopicVerseAsImage(index)}
+                      disabled={savingTopicVerseIndex === index}
+                    >
+                      <Feather name={savingTopicVerseIndex === index ? "loader" : "image"} size={16} color="rgba(255, 255, 255, 0.7)" />
+                      <Text style={styles.topicVerseShareText}>Save</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={styles.topicVerseActionButton}
+                      onPress={() => {
+                        Share.share({
+                          message: `"${item.text}"\n\n— ${item.reference}`,
+                          title: "Bible Verse"
+                        })
+                      }}
+                    >
+                      <Feather name="share-2" size={16} color="rgba(255, 255, 255, 0.7)" />
+                      <Text style={styles.topicVerseShareText}>Share</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+
+                {/* Hidden wallpaper view for this verse */}
+                <View
+                  style={styles.wallpaperView}
+                  ref={ref => (topicWallpaperViewRefs.current[index] = ref)}
+                  collapsable={false}
                 >
-                  <Feather name="share-2" size={16} color="rgba(255, 255, 255, 0.7)" />
-                  <Text style={styles.topicVerseShareText}>Share</Text>
-                </TouchableOpacity>
-              </View>
+                  <LinearGradient
+                    colors={(() => {
+                      const hour = new Date().getHours()
+                      if (hour >= 21 || hour < 6) {
+                        return ["#1a1a2e", "#2d1b4e", "#1a1a2e"]
+                      } else if (hour >= 6 && hour < 9) {
+                        return ["#FFB88C", "#FFA07A", "#FF8C94"]
+                      } else if (hour >= 9 && hour < 12) {
+                        return ["#89CFF0", "#B0E0E6", "#98D8C8"]
+                      } else if (hour >= 12 && hour < 17) {
+                        return ["#4A90E2", "#50C9C3", "#4A90E2"]
+                      } else if (hour >= 17 && hour < 20) {
+                        return ["#FFB6D9", "#C8A2E0", "#B4A7D6"]
+                      } else {
+                        return ["#FF6B9D", "#C06C84", "#6C5B7B"]
+                      }
+                    })()}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
+                    style={styles.wallpaperContainer}
+                  >
+                    <View style={styles.wallpaperContent}>
+                      <Text style={[styles.wallpaperVerse, (() => {
+                        const hour = new Date().getHours()
+                        return hour >= 20 || hour < 6 ? { color: "#ffffff" } : { color: "#1a1a2e" }
+                      })()]}>"{item.text}"</Text>
+                      <Text style={[styles.wallpaperReference, (() => {
+                        const hour = new Date().getHours()
+                        return hour >= 20 || hour < 6 ? { color: "rgba(255,255,255,0.85)" } : { color: "rgba(26,26,46,0.85)" }
+                      })()]}>— {item.reference}</Text>
+                      <Text style={[styles.wallpaperBranding, (() => {
+                        const hour = new Date().getHours()
+                        return hour >= 20 || hour < 6 ? { color: "rgba(255,255,255,0.5)" } : { color: "rgba(26,26,46,0.5)" }
+                      })()]}>LuminaVerse</Text>
+                    </View>
+                  </LinearGradient>
+                </View>
+              </>
             )}
           />
         </View>
@@ -1760,7 +1851,19 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: "rgba(255, 255, 255, 0.6)",
     fontStyle: "italic",
-    marginBottom: 10
+    marginBottom: 12
+  },
+  topicVerseActions: {
+    flexDirection: "row",
+    gap: 8
+  },
+  topicVerseActionButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    backgroundColor: "rgba(255, 255, 255, 0.1)",
+    borderRadius: 6
   },
   topicVerseShareButton: {
     flexDirection: "row",
