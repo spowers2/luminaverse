@@ -27,11 +27,7 @@
         "backgroundColor": "#4a7c7e"
       },
       "package": "com.labazine.luminaverse",
-      "permissions": [
-        "android.permission.SCHEDULE_EXACT_ALARM",
-        "android.permission.READ_MEDIA_IMAGES",
-        "android.permission.WRITE_EXTERNAL_STORAGE"
-      ]
+      "permissions": ["android.permission.SCHEDULE_EXACT_ALARM", "android.permission.READ_MEDIA_IMAGES", "android.permission.WRITE_EXTERNAL_STORAGE"]
     },
     "plugins": [
       [

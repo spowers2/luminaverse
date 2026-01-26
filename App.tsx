@@ -11,6 +11,7 @@ import { getWordDefinition, type WordDefinition } from "./wordDefinitions"
 import { topics, topicalVerses, getVersesByTopic, getRandomVerseFromTopic, type Topic, type TopicalVerse } from "./topicalVerses"
 import * as MediaLibrary from "expo-media-library"
 import { captureRef } from "react-native-view-shot"
+import { LinearGradient } from "expo-linear-gradient"
 
 interface Verse {
   text: string
@@ -595,7 +596,7 @@ export default function App() {
     try {
       // Request media library permissions
       const { status } = await MediaLibrary.requestPermissionsAsync()
-      
+
       if (status !== "granted") {
         Alert.alert("Permission Required", "Please grant photo library access to save verse images.")
         setSavingImage(false)
@@ -614,12 +615,7 @@ export default function App() {
       await MediaLibrary.saveToLibraryAsync(uri)
 
       // Show success message
-      Alert.alert(
-        "✓ Saved to Photos",
-        "Your verse image has been saved! Set it as wallpaper in Settings → Wallpaper → Choose Photo.",
-        [{ text: "OK" }]
-      )
-
+      Alert.alert("✓ Saved to Photos", "Your verse image has been saved! Set it as wallpaper in Settings → Wallpaper → Choose Photo.", [{ text: "OK" }])
     } catch (error) {
       console.error("Error saving image:", error)
       Alert.alert("Error", "Failed to save image. Please try again.")
@@ -700,58 +696,72 @@ export default function App() {
 
       {/* Hidden Wallpaper View for Image Generation */}
       {verse && (
-        <View
-          style={styles.wallpaperView}
-          ref={wallpaperViewRef}
-          collapsable={false}
-        >
-          {/* Auto-detect time of day for background */}
-          <View style={[
-            styles.wallpaperContainer,
-            (() => {
+        <View style={styles.wallpaperView} ref={wallpaperViewRef} collapsable={false}>
+          {/* Beautiful gradient backgrounds based on time of day */}
+          <LinearGradient
+            colors={(() => {
               const hour = new Date().getHours()
               if (hour >= 21 || hour < 6) {
-                // Night: Dark background
-                return { backgroundColor: "#1a1a2e" }
-              } else if (hour >= 6 && hour < 12) {
-                // Morning: Light background
-                return { backgroundColor: "#f5f5f5" }
+                // 🌙 Night: Deep twilight gradient
+                return ["#1a1a2e", "#2d1b4e", "#1a1a2e"]
+              } else if (hour >= 6 && hour < 9) {
+                // 🌅 Early Morning: Sunrise gradient
+                return ["#FFB88C", "#FFA07A", "#FF8C94"]
+              } else if (hour >= 9 && hour < 12) {
+                // ☀️ Mid Morning: Soft blue sky
+                return ["#89CFF0", "#B0E0E6", "#98D8C8"]
+              } else if (hour >= 12 && hour < 17) {
+                // 🌊 Afternoon: Ocean gradient
+                return ["#4A90E2", "#50C9C3", "#4A90E2"]
+              } else if (hour >= 17 && hour < 20) {
+                // 🌸 Evening: Soft blossom
+                return ["#FFB6D9", "#C8A2E0", "#B4A7D6"]
               } else {
-                // Afternoon/Evening: Gradient effect using backgroundColor
-                return { backgroundColor: backgroundColor }
+                // 🌆 Dusk: Warm twilight
+                return ["#FF6B9D", "#C06C84", "#6C5B7B"]
               }
-            })()
-          ]}>
+            })()}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={styles.wallpaperContainer}
+          >
             <View style={styles.wallpaperContent}>
-              <Text style={[
-                styles.wallpaperVerse,
-                (() => {
-                  const hour = new Date().getHours()
-                  return (hour >= 21 || hour < 6) ? { color: "#ffffff" } : { color: "#1a1a2e" }
-                })()
-              ]}>
+              <Text
+                style={[
+                  styles.wallpaperVerse,
+                  (() => {
+                    const hour = new Date().getHours()
+                    // Night and dusk use white text, others use dark
+                    return hour >= 20 || hour < 6 ? { color: "#ffffff" } : { color: "#1a1a2e" }
+                  })()
+                ]}
+              >
                 "{verse.text}"
               </Text>
-              <Text style={[
-                styles.wallpaperReference,
-                (() => {
-                  const hour = new Date().getHours()
-                  return (hour >= 21 || hour < 6) ? { color: "rgba(255,255,255,0.7)" } : { color: "rgba(26,26,46,0.7)" }
-                })()
-              ]}>
+              <Text
+                style={[
+                  styles.wallpaperReference,
+                  (() => {
+                    const hour = new Date().getHours()
+                    return hour >= 20 || hour < 6 ? { color: "rgba(255,255,255,0.85)" } : { color: "rgba(26,26,46,0.85)" }
+                  })()
+                ]}
+              >
                 — {verse.reference}
               </Text>
-              <Text style={[
-                styles.wallpaperBranding,
-                (() => {
-                  const hour = new Date().getHours()
-                  return (hour >= 21 || hour < 6) ? { color: "rgba(255,255,255,0.4)" } : { color: "rgba(26,26,46,0.4)" }
-                })()
-              ]}>
+              <Text
+                style={[
+                  styles.wallpaperBranding,
+                  (() => {
+                    const hour = new Date().getHours()
+                    return hour >= 20 || hour < 6 ? { color: "rgba(255,255,255,0.5)" } : { color: "rgba(26,26,46,0.5)" }
+                  })()
+                ]}
+              >
                 LuminaVerse
               </Text>
             </View>
-          </View>
+          </LinearGradient>
         </View>
       )}
     </ScrollView>
@@ -1787,24 +1797,24 @@ const styles = StyleSheet.create({
     justifyContent: "center"
   },
   wallpaperVerse: {
-    fontSize: 36,
-    fontWeight: "400",
-    lineHeight: 52,
+    fontSize: 52,
+    fontWeight: "500",
+    lineHeight: 68,
     textAlign: "center",
-    marginBottom: 40,
-    paddingHorizontal: 40
+    marginBottom: 50,
+    paddingHorizontal: 50
   },
   wallpaperReference: {
-    fontSize: 24,
-    fontWeight: "500",
+    fontSize: 32,
+    fontWeight: "600",
     textAlign: "center",
-    marginBottom: 60
+    marginBottom: 80
   },
   wallpaperBranding: {
-    fontSize: 18,
+    fontSize: 20,
     fontWeight: "300",
     textAlign: "center",
     position: "absolute",
-    bottom: 80
+    bottom: 100
   }
 })
