@@ -9,6 +9,7 @@ import DateTimePicker from "@react-native-community/datetimepicker"
 import { Accelerometer } from "expo-sensors"
 import { getWordDefinition, type WordDefinition } from "./wordDefinitions"
 import { topics, topicalVerses, getVersesByTopic, getRandomVerseFromTopic, type Topic, type TopicalVerse } from "./topicalVerses"
+import BibleReader from "./BibleReader"
 import * as MediaLibrary from "expo-media-library"
 import { captureRef } from "react-native-view-shot"
 import { LinearGradient } from "expo-linear-gradient"
@@ -23,7 +24,7 @@ interface SavedVerse extends Verse {
   savedAt: number
 }
 
-type Screen = "home" | "favorites" | "topics" | "settings"
+type Screen = "home" | "favorites" | "bible" | "topics" | "settings"
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
@@ -367,6 +368,33 @@ export default function App() {
       setFavorites(updatedFavorites)
     } catch (error) {
       Alert.alert("Error", "Failed to update favorites")
+    }
+  }
+
+  const handleSaveFromBible = async (text: string, reference: string) => {
+    try {
+      // Check if already saved
+      const exists = favorites.some(fav => fav.reference === reference && fav.text === text)
+      
+      if (exists) {
+        Alert.alert("Already Saved", "This verse is already in your favorites")
+        return
+      }
+
+      const newFavorite: SavedVerse = {
+        text,
+        reference,
+        id: Date.now().toString(),
+        savedAt: Date.now()
+      }
+
+      const updatedFavorites = [newFavorite, ...favorites]
+      await AsyncStorage.setItem("@favorites", JSON.stringify(updatedFavorites))
+      setFavorites(updatedFavorites)
+      
+      Alert.alert("Saved!", `${reference} added to favorites`)
+    } catch (error) {
+      Alert.alert("Error", "Failed to save verse")
     }
   }
 
@@ -1177,6 +1205,7 @@ export default function App() {
 
       {currentScreen === "home" && renderHome()}
       {currentScreen === "favorites" && renderFavorites()}
+      {currentScreen === "bible" && <BibleReader onSaveVerse={handleSaveFromBible} />}
       {currentScreen === "topics" && renderTopics()}
       {currentScreen === "settings" && renderSettings()}
 
@@ -1190,6 +1219,11 @@ export default function App() {
         <TouchableOpacity style={styles.navItem} onPress={() => setCurrentScreen("favorites")}>
           <Feather name="heart" size={24} color={currentScreen === "favorites" ? "#fff" : "rgba(255, 255, 255, 0.5)"} />
           <Text style={[styles.navLabel, currentScreen === "favorites" && styles.navLabelActive]}>Favorites</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity style={styles.navItem} onPress={() => setCurrentScreen("bible")}>
+          <Feather name="book" size={24} color={currentScreen === "bible" ? "#fff" : "rgba(255, 255, 255, 0.5)"} />
+          <Text style={[styles.navLabel, currentScreen === "bible" && styles.navLabelActive]}>Bible</Text>
         </TouchableOpacity>
 
         <TouchableOpacity style={styles.navItem} onPress={() => setCurrentScreen("topics")}>
