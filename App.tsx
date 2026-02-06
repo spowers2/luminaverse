@@ -1109,7 +1109,7 @@ export default function App() {
 
       <View style={styles.aboutSection}>
         <Text style={styles.aboutSectionTitle}>App Info</Text>
-        <Text style={styles.aboutText}>Version 1.2.0</Text>
+        <Text style={styles.aboutText}>Version 1.3.0</Text>
         <Text style={styles.aboutText}>© 2026 Labazine</Text>
       </View>
 

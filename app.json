@@ -2,7 +2,7 @@
   "expo": {
     "name": "LuminaVerse",
     "slug": "luminaverse",
-    "version": "1.2.0",
+    "version": "1.3.0",
     "description": "Daily Bible verses with peaceful music and streak tracking. Find inspiration through beautiful scripture in a distraction-free interface.",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
