@@ -58,6 +58,7 @@ export default function App() {
   const [topicVerses, setTopicVerses] = useState<TopicalVerse[]>([])
   const [savingImage, setSavingImage] = useState(false)
   const [savingTopicVerseIndex, setSavingTopicVerseIndex] = useState<number | null>(null)
+  const [bibleFontStyle, setBibleFontStyle] = useState<"sans-serif" | "serif">("sans-serif")
   const fadeAnim = useRef(new Animated.Value(0)).current
   const scaleAnim = useRef(new Animated.Value(0.8)).current
   const pulseAnim = useRef(new Animated.Value(1)).current
@@ -72,6 +73,7 @@ export default function App() {
     loadMusicSettings()
     loadBackgroundColor()
     loadBibleVersion()
+    loadBibleFontStyle()
 
     // Set up shake detection
     let lastShake = 0
@@ -252,6 +254,26 @@ export default function App() {
       fetchVerse()
     } catch (err) {
       console.log("Failed to save bible version", err)
+    }
+  }
+
+  const loadBibleFontStyle = async () => {
+    try {
+      const savedFont = await AsyncStorage.getItem("@bibleFontStyle")
+      if (savedFont === "serif" || savedFont === "sans-serif") {
+        setBibleFontStyle(savedFont)
+      }
+    } catch (err) {
+      console.log("Failed to load bible font style", err)
+    }
+  }
+
+  const saveBibleFontStyle = async (font: "sans-serif" | "serif") => {
+    try {
+      await AsyncStorage.setItem("@bibleFontStyle", font)
+      setBibleFontStyle(font)
+    } catch (err) {
+      console.log("Failed to save bible font style", err)
     }
   }
 
@@ -1136,6 +1158,33 @@ export default function App() {
       </View>
 
       <View style={styles.aboutSection}>
+        <Text style={styles.aboutSectionTitle}>Bible Reading Font</Text>
+        <Text style={styles.aboutText}>Choose your preferred font style for Scripture:</Text>
+        <View style={styles.fontStyleOptions}>
+          <TouchableOpacity
+            style={[styles.fontStyleButton, bibleFontStyle === "sans-serif" && styles.fontStyleButtonSelected]}
+            onPress={() => saveBibleFontStyle("sans-serif")}
+          >
+            <Text style={[styles.fontStyleButtonText, bibleFontStyle === "sans-serif" && styles.fontStyleButtonTextSelected]}>
+              Sans-Serif
+            </Text>
+            <Text style={styles.fontStyleExample}>Simple & Modern</Text>
+            {bibleFontStyle === "sans-serif" && <Feather name="check" size={18} color="#fff" style={{ marginTop: 4 }} />}
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.fontStyleButton, bibleFontStyle === "serif" && styles.fontStyleButtonSelected]}
+            onPress={() => saveBibleFontStyle("serif")}
+          >
+            <Text style={[styles.fontStyleButtonText, { fontFamily: Platform.OS === 'ios' ? 'Georgia' : 'serif' }, bibleFontStyle === "serif" && styles.fontStyleButtonTextSelected]}>
+              Serif
+            </Text>
+            <Text style={[styles.fontStyleExample, { fontFamily: Platform.OS === 'ios' ? 'Georgia' : 'serif' }]}>Traditional & Classic</Text>
+            {bibleFontStyle === "serif" && <Feather name="check" size={18} color="#fff" style={{ marginTop: 4 }} />}
+          </TouchableOpacity>
+        </View>
+      </View>
+
+      <View style={styles.aboutSection}>
         <Text style={styles.aboutSectionTitle}>Background Color</Text>
         <Text style={styles.aboutText}>Choose your preferred app theme color:</Text>
         <View style={styles.colorGrid}>
@@ -1205,7 +1254,7 @@ export default function App() {
 
       {currentScreen === "home" && renderHome()}
       {currentScreen === "favorites" && renderFavorites()}
-      {currentScreen === "bible" && <BibleReader onSaveVerse={handleSaveFromBible} />}
+      {currentScreen === "bible" && <BibleReader onSaveVerse={handleSaveFromBible} fontStyle={bibleFontStyle} />}
       {currentScreen === "topics" && renderTopics()}
       {currentScreen === "settings" && renderSettings()}
 
@@ -1673,6 +1722,37 @@ const styles = StyleSheet.create({
   versionOptionTextSelected: {
     color: "#fff",
     fontWeight: "600"
+  },
+  fontStyleOptions: {
+    flexDirection: "row",
+    gap: 12,
+    marginTop: 12
+  },
+  fontStyleButton: {
+    flex: 1,
+    backgroundColor: "rgba(255, 255, 255, 0.15)",
+    padding: 16,
+    borderRadius: 12,
+    alignItems: "center",
+    borderWidth: 2,
+    borderColor: "rgba(255, 255, 255, 0.2)"
+  },
+  fontStyleButtonSelected: {
+    backgroundColor: "rgba(255, 255, 255, 0.25)",
+    borderColor: "#fff"
+  },
+  fontStyleButtonText: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: "rgba(255, 255, 255, 0.8)",
+    marginBottom: 4
+  },
+  fontStyleButtonTextSelected: {
+    color: "#fff"
+  },
+  fontStyleExample: {
+    fontSize: 12,
+    color: "rgba(255, 255, 255, 0.6)"
   },
   tappableWord: {
     textDecorationLine: "underline",
