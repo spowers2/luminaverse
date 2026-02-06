@@ -1,15 +1,16 @@
 import { useState, useEffect, useRef } from "react"
-import { StyleSheet, Text, View, TouchableOpacity, ScrollView, RefreshControl, Animated, Alert, Share, Modal, FlatList, Switch, Platform } from "react-native"
+import { StyleSheet, Text, View, TouchableOpacity, ScrollView, RefreshControl, Animated, Alert, Share, Modal, FlatList, Switch, Platform, Linking } from "react-native"
 import { StatusBar } from "expo-status-bar"
 import { Feather } from "@expo/vector-icons"
 import AsyncStorage from "@react-native-async-storage/async-storage"
 import * as Notifications from "expo-notifications"
-import { Audio } from "expo-av"
+import { useAudioPlayer, AudioSource } from "expo-audio"
 import DateTimePicker from "@react-native-community/datetimepicker"
 import { Accelerometer } from "expo-sensors"
 import { getWordDefinition, type WordDefinition } from "./wordDefinitions"
-import { topics, topicalVerses, getVersesByTopic, getRandomVerseFromTopic, type Topic, type TopicalVerse } from "./topicalVerses"
+import { topics, getVersesByTopic, type Topic, type TopicalVerse } from "./topicalVerses"
 import BibleReader from "./BibleReader"
+import { BIBLE_VERSIONS } from "./bibleData"
 import * as MediaLibrary from "expo-media-library"
 import { captureRef } from "react-native-view-shot"
 import { LinearGradient } from "expo-linear-gradient"
@@ -47,7 +48,6 @@ export default function App() {
   const [showTimePicker, setShowTimePicker] = useState(false)
   const [currentStreak, setCurrentStreak] = useState(0)
   const [musicEnabled, setMusicEnabled] = useState(false)
-  const [sound, setSound] = useState<Audio.Sound | null>(null)
   const [musicTrack, setMusicTrack] = useState("sp1")
   const [backgroundColor, setBackgroundColor] = useState("#4a7c7e")
   const [bibleVersion, setBibleVersion] = useState("kjv")
@@ -64,6 +64,15 @@ export default function App() {
   const pulseAnim = useRef(new Animated.Value(1)).current
   const wallpaperViewRef = useRef<View>(null)
   const topicWallpaperViewRefs = useRef<{ [key: number]: View | null }>({})
+  const fetchVerseRef = useRef<() => void>(() => {})
+
+  // Audio player for background music
+  const audioPlayer = useAudioPlayer()
+  const audioFiles: Record<string, AudioSource> = {
+    sp1: require("./assets/audio/sp1.mp3"),
+    swl1: require("./assets/audio/swl1.mp3"),
+    zs1: require("./assets/audio/zs1.mp3")
+  }
 
   useEffect(() => {
     loadFavorites()
@@ -85,7 +94,7 @@ export default function App() {
       // Detect shake (threshold > 2.5g and debounce 1 second)
       if (acceleration > 2.5 && now - lastShake > 1000) {
         lastShake = now
-        handleNewVerse()
+        fetchVerseRef.current()
       }
     })
 
@@ -93,8 +102,8 @@ export default function App() {
 
     return () => {
       subscription.remove()
-      if (sound) {
-        sound.unloadAsync()
+      if (soundRef.current) {
+        soundRef.current.unloadAsync()
       }
     }
   }, [])
@@ -124,6 +133,10 @@ export default function App() {
   useEffect(() => {
     checkIfFavorite()
   }, [verse, favorites])
+
+  useEffect(() => {
+    fetchVerseRef.current = fetchVerse
+  })
 
   const loadFavorites = async () => {
     try {
@@ -279,12 +292,8 @@ export default function App() {
 
   const handleMusicTrackChange = async (track: string) => {
     try {
-      // Stop current sound if playing
-      if (sound) {
-        await sound.stopAsync()
-        await sound.unloadAsync()
-        setSound(null)
-      }
+      // Stop current audio if playing
+      audioPlayer.pause()
 
       // Update selected track
       setMusicTrack(track)
@@ -301,24 +310,20 @@ export default function App() {
 
   const playBackgroundMusic = async (trackOverride?: string) => {
     try {
-      await Audio.setAudioModeAsync({
-        playsInSilentModeIOS: true,
-        staysActiveInBackground: false
-      })
-
       // Use provided track or fall back to state
       const trackToPlay = trackOverride || musicTrack
+      const selectedAudio = audioFiles[trackToPlay]
 
-      // Map track IDs to audio files
-      const audioFiles: Record<string, any> = {
-        sp1: require("./assets/audio/sp1.mp3"),
-        swl1: require("./assets/audio/swl1.mp3"),
-        zs1: require("./assets/audio/zs1.mp3")
+      if (!selectedAudio) {
+        console.log("Audio file not found for track:", trackToPlay)
+        return
       }
 
-      const selectedAudio = audioFiles[trackToPlay]
-      const { sound: newSound } = await Audio.Sound.createAsync(selectedAudio, { shouldPlay: true, isLooping: true, volume: 0.3 })
-      setSound(newSound)
+      // Replace the audio source and play
+      audioPlayer.replace(selectedAudio)
+      audioPlayer.loop = true
+      audioPlayer.volume = 0.3
+      audioPlayer.play()
     } catch (error) {
       console.log("Failed to load background music:", error)
       setMusicEnabled(false)
@@ -335,11 +340,7 @@ export default function App() {
       if (value) {
         await playBackgroundMusic()
       } else {
-        if (sound) {
-          await sound.stopAsync()
-          await sound.unloadAsync()
-          setSound(null)
-        }
+        audioPlayer.pause()
       }
     } catch (error) {
       Alert.alert("Error", "Failed to toggle music")
@@ -397,7 +398,7 @@ export default function App() {
     try {
       // Check if already saved
       const exists = favorites.some(fav => fav.reference === reference && fav.text === text)
-      
+
       if (exists) {
         Alert.alert("Already Saved", "This verse is already in your favorites")
         return
@@ -413,7 +414,7 @@ export default function App() {
       const updatedFavorites = [newFavorite, ...favorites]
       await AsyncStorage.setItem("@favorites", JSON.stringify(updatedFavorites))
       setFavorites(updatedFavorites)
-      
+
       Alert.alert("Saved!", `${reference} added to favorites`)
     } catch (error) {
       Alert.alert("Error", "Failed to save verse")
@@ -640,54 +641,17 @@ export default function App() {
     }
   }
 
-  const handleSaveAsImage = async () => {
-    if (!verse || !wallpaperViewRef.current) return
-
-    setSavingImage(true)
-
-    try {
-      // Request media library permissions
-      const { status } = await MediaLibrary.requestPermissionsAsync()
-
-      if (status !== "granted") {
-        Alert.alert("Permission Required", "Please grant photo library access to save verse images.")
-        setSavingImage(false)
-        return
-      }
-
-      // Capture the wallpaper view as image
-      const uri = await captureRef(wallpaperViewRef, {
-        format: "png",
-        quality: 1,
-        width: 1170,
-        height: 2532
-      })
-
-      // Save to media library
-      await MediaLibrary.saveToLibraryAsync(uri)
-
-      // Show success message
-      Alert.alert("✓ Saved to Photos", "Your verse image has been saved! Set it as wallpaper in Settings → Wallpaper → Choose Photo.", [{ text: "OK" }])
-    } catch (error) {
-      console.error("Error saving image:", error)
-      Alert.alert("Error", "Failed to save image. Please try again.")
-    } finally {
-      setSavingImage(false)
-    }
-  }
-
-  const handleSaveTopicVerseAsImage = async (verseIndex: number) => {
-    const viewRef = topicWallpaperViewRefs.current[verseIndex]
+  const saveViewAsImage = async (viewRef: View | null, setLoading: (v: boolean | null) => void) => {
     if (!viewRef) return
 
-    setSavingTopicVerseIndex(verseIndex)
+    setLoading(true)
 
     try {
       const { status } = await MediaLibrary.requestPermissionsAsync()
 
       if (status !== "granted") {
         Alert.alert("Permission Required", "Please grant photo library access to save verse images.")
-        setSavingTopicVerseIndex(null)
+        setLoading(false)
         return
       }
 
@@ -705,9 +669,48 @@ export default function App() {
       console.error("Error saving image:", error)
       Alert.alert("Error", "Failed to save image. Please try again.")
     } finally {
-      setSavingTopicVerseIndex(null)
+      setLoading(false)
     }
   }
+
+  const handleSaveAsImage = async () => {
+    if (!verse || !wallpaperViewRef.current) return
+    await saveViewAsImage(wallpaperViewRef.current, v => setSavingImage(v as boolean))
+  }
+
+  const handleSaveTopicVerseAsImage = async (verseIndex: number) => {
+    const viewRef = topicWallpaperViewRefs.current[verseIndex]
+    if (!viewRef) return
+    await saveViewAsImage(viewRef, v => setSavingTopicVerseIndex(v ? verseIndex : null))
+  }
+
+  const getWallpaperGradientColors = (): [string, string, string] => {
+    const hour = new Date().getHours()
+    if (hour >= 21 || hour < 6) return ["#1a1a2e", "#2d1b4e", "#1a1a2e"]
+    if (hour >= 6 && hour < 9) return ["#FFB88C", "#FFA07A", "#FF8C94"]
+    if (hour >= 9 && hour < 12) return ["#89CFF0", "#B0E0E6", "#98D8C8"]
+    if (hour >= 12 && hour < 17) return ["#4A90E2", "#50C9C3", "#4A90E2"]
+    if (hour >= 17 && hour < 20) return ["#FFB6D9", "#C8A2E0", "#B4A7D6"]
+    return ["#FF6B9D", "#C06C84", "#6C5B7B"]
+  }
+
+  const getWallpaperTextColor = (variant: "verse" | "reference" | "branding"): string => {
+    const hour = new Date().getHours()
+    const isDark = hour >= 20 || hour < 6
+    if (variant === "verse") return isDark ? "#ffffff" : "#1a1a2e"
+    if (variant === "reference") return isDark ? "rgba(255,255,255,0.85)" : "rgba(26,26,46,0.85)"
+    return isDark ? "rgba(255,255,255,0.5)" : "rgba(26,26,46,0.5)"
+  }
+
+  const renderWallpaperContent = (text: string, reference: string) => (
+    <LinearGradient colors={getWallpaperGradientColors()} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.wallpaperContainer}>
+      <View style={styles.wallpaperContent}>
+        <Text style={[styles.wallpaperVerse, { color: getWallpaperTextColor("verse") }]}>"{text}"</Text>
+        <Text style={[styles.wallpaperReference, { color: getWallpaperTextColor("reference") }]}>— {reference}</Text>
+        <Text style={[styles.wallpaperBranding, { color: getWallpaperTextColor("branding") }]}>LuminaVerse</Text>
+      </View>
+    </LinearGradient>
+  )
 
   const renderHome = () => (
     <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor="#fff" colors={["#fff"]} />}>
@@ -782,71 +785,7 @@ export default function App() {
       {/* Hidden Wallpaper View for Image Generation */}
       {verse && (
         <View style={styles.wallpaperView} ref={wallpaperViewRef} collapsable={false}>
-          {/* Beautiful gradient backgrounds based on time of day */}
-          <LinearGradient
-            colors={(() => {
-              const hour = new Date().getHours()
-              if (hour >= 21 || hour < 6) {
-                // 🌙 Night: Deep twilight gradient
-                return ["#1a1a2e", "#2d1b4e", "#1a1a2e"]
-              } else if (hour >= 6 && hour < 9) {
-                // 🌅 Early Morning: Sunrise gradient
-                return ["#FFB88C", "#FFA07A", "#FF8C94"]
-              } else if (hour >= 9 && hour < 12) {
-                // ☀️ Mid Morning: Soft blue sky
-                return ["#89CFF0", "#B0E0E6", "#98D8C8"]
-              } else if (hour >= 12 && hour < 17) {
-                // 🌊 Afternoon: Ocean gradient
-                return ["#4A90E2", "#50C9C3", "#4A90E2"]
-              } else if (hour >= 17 && hour < 20) {
-                // 🌸 Evening: Soft blossom
-                return ["#FFB6D9", "#C8A2E0", "#B4A7D6"]
-              } else {
-                // 🌆 Dusk: Warm twilight
-                return ["#FF6B9D", "#C06C84", "#6C5B7B"]
-              }
-            })()}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-            style={styles.wallpaperContainer}
-          >
-            <View style={styles.wallpaperContent}>
-              <Text
-                style={[
-                  styles.wallpaperVerse,
-                  (() => {
-                    const hour = new Date().getHours()
-                    // Night and dusk use white text, others use dark
-                    return hour >= 20 || hour < 6 ? { color: "#ffffff" } : { color: "#1a1a2e" }
-                  })()
-                ]}
-              >
-                "{verse.text}"
-              </Text>
-              <Text
-                style={[
-                  styles.wallpaperReference,
-                  (() => {
-                    const hour = new Date().getHours()
-                    return hour >= 20 || hour < 6 ? { color: "rgba(255,255,255,0.85)" } : { color: "rgba(26,26,46,0.85)" }
-                  })()
-                ]}
-              >
-                — {verse.reference}
-              </Text>
-              <Text
-                style={[
-                  styles.wallpaperBranding,
-                  (() => {
-                    const hour = new Date().getHours()
-                    return hour >= 20 || hour < 6 ? { color: "rgba(255,255,255,0.5)" } : { color: "rgba(26,26,46,0.5)" }
-                  })()
-                ]}
-              >
-                LuminaVerse
-              </Text>
-            </View>
-          </LinearGradient>
+          {renderWallpaperContent(verse.text, verse.reference)}
         </View>
       )}
     </ScrollView>
@@ -964,63 +903,7 @@ export default function App() {
 
                 {/* Hidden wallpaper view for this verse */}
                 <View style={styles.wallpaperView} ref={ref => (topicWallpaperViewRefs.current[index] = ref)} collapsable={false}>
-                  <LinearGradient
-                    colors={(() => {
-                      const hour = new Date().getHours()
-                      if (hour >= 21 || hour < 6) {
-                        return ["#1a1a2e", "#2d1b4e", "#1a1a2e"]
-                      } else if (hour >= 6 && hour < 9) {
-                        return ["#FFB88C", "#FFA07A", "#FF8C94"]
-                      } else if (hour >= 9 && hour < 12) {
-                        return ["#89CFF0", "#B0E0E6", "#98D8C8"]
-                      } else if (hour >= 12 && hour < 17) {
-                        return ["#4A90E2", "#50C9C3", "#4A90E2"]
-                      } else if (hour >= 17 && hour < 20) {
-                        return ["#FFB6D9", "#C8A2E0", "#B4A7D6"]
-                      } else {
-                        return ["#FF6B9D", "#C06C84", "#6C5B7B"]
-                      }
-                    })()}
-                    start={{ x: 0, y: 0 }}
-                    end={{ x: 1, y: 1 }}
-                    style={styles.wallpaperContainer}
-                  >
-                    <View style={styles.wallpaperContent}>
-                      <Text
-                        style={[
-                          styles.wallpaperVerse,
-                          (() => {
-                            const hour = new Date().getHours()
-                            return hour >= 20 || hour < 6 ? { color: "#ffffff" } : { color: "#1a1a2e" }
-                          })()
-                        ]}
-                      >
-                        "{item.text}"
-                      </Text>
-                      <Text
-                        style={[
-                          styles.wallpaperReference,
-                          (() => {
-                            const hour = new Date().getHours()
-                            return hour >= 20 || hour < 6 ? { color: "rgba(255,255,255,0.85)" } : { color: "rgba(26,26,46,0.85)" }
-                          })()
-                        ]}
-                      >
-                        — {item.reference}
-                      </Text>
-                      <Text
-                        style={[
-                          styles.wallpaperBranding,
-                          (() => {
-                            const hour = new Date().getHours()
-                            return hour >= 20 || hour < 6 ? { color: "rgba(255,255,255,0.5)" } : { color: "rgba(26,26,46,0.5)" }
-                          })()
-                        ]}
-                      >
-                        LuminaVerse
-                      </Text>
-                    </View>
-                  </LinearGradient>
+                  {renderWallpaperContent(item.text, item.reference)}
                 </View>
               </>
             )}
@@ -1086,7 +969,7 @@ export default function App() {
               {notificationTime.getHours().toString().padStart(2, "0")}:{notificationTime.getMinutes().toString().padStart(2, "0")}
             </Text>
           </View>
-          <Switch value={notificationsEnabled} onValueChange={toggleNotifications} trackColor={{ false: "rgba(255,255,255,0.2)", true: "#81b0ff" }} thumbColor={notificationsEnabled ? "#4a7c7e" : "#f4f3f4"} />
+          <Switch value={notificationsEnabled} onValueChange={toggleNotifications} trackColor={{ false: "rgba(255,255,255,0.2)", true: "#81b0ff" }} thumbColor={notificationsEnabled ? backgroundColor : "#f4f3f4"} />
         </View>
         {notificationsEnabled && (
           <TouchableOpacity style={styles.timePickerButton} onPress={() => setShowTimePicker(true)}>
@@ -1103,7 +986,7 @@ export default function App() {
           <View style={styles.settingInfo}>
             <Text style={styles.settingLabel}>Meditation Music</Text>
           </View>
-          <Switch value={musicEnabled} onValueChange={toggleMusic} trackColor={{ false: "rgba(255,255,255,0.2)", true: "#81b0ff" }} thumbColor={musicEnabled ? "#4a7c7e" : "#f4f3f4"} />
+          <Switch value={musicEnabled} onValueChange={toggleMusic} trackColor={{ false: "rgba(255,255,255,0.2)", true: "#81b0ff" }} thumbColor={musicEnabled ? backgroundColor : "#f4f3f4"} />
         </View>
         {musicEnabled && (
           <View style={{ marginTop: 12 }}>
@@ -1113,15 +996,15 @@ export default function App() {
               { id: "swl1", name: "Soft Worship", emoji: "🙏" },
               { id: "zs1", name: "Zen Strings", emoji: "🎻" }
             ].map(track => (
-              <TouchableOpacity key={track.id} style={[styles.musicTrackButton, musicTrack === track.id && styles.musicTrackButtonActive]} onPress={() => handleMusicTrackChange(track.id)}>
+              <TouchableOpacity key={track.id} style={[styles.musicTrackButton, musicTrack === track.id && styles.musicTrackButtonActive, musicTrack === track.id && { borderColor: backgroundColor }]} onPress={() => handleMusicTrackChange(track.id)}>
                 <View style={{ flexDirection: "row", alignItems: "center", flex: 1 }}>
                   <Text style={{ fontSize: 20, marginRight: 10 }}>{track.emoji}</Text>
                   <View style={{ flex: 1 }}>
                     <Text style={[styles.musicTrackName, musicTrack === track.id && styles.musicTrackNameActive]}>{track.name}</Text>
-                    {musicTrack === track.id && <Text style={styles.nowPlayingText}>♪ Now Playing</Text>}
+                    {musicTrack === track.id && <Text style={[styles.nowPlayingText, { color: backgroundColor }]}>♪ Now Playing</Text>}
                   </View>
                 </View>
-                {musicTrack === track.id && <Feather name="volume-2" size={18} color="#4a7c7e" />}
+                {musicTrack === track.id && <Feather name="volume-2" size={18} color={backgroundColor} />}
               </TouchableOpacity>
             ))}
           </View>
@@ -1132,14 +1015,9 @@ export default function App() {
         <Text style={styles.aboutSectionTitle}>Bible Version</Text>
         <Text style={styles.aboutText}>Choose your preferred translation:</Text>
         <View style={styles.versionGrid}>
-          {[
-            { id: "kjv", name: "King James" },
-            { id: "web", name: "World English" },
-            { id: "asv", name: "American Standard" },
-            { id: "bbe", name: "Basic English" }
-          ].map(version => (
+          {BIBLE_VERSIONS.map(version => (
             <TouchableOpacity key={version.id} style={[styles.versionOption, bibleVersion === version.id && styles.versionOptionSelected]} onPress={() => saveBibleVersion(version.id)}>
-              <Text style={[styles.versionOptionText, bibleVersion === version.id && styles.versionOptionTextSelected]}>{version.name}</Text>
+              <Text style={[styles.versionOptionText, bibleVersion === version.id && styles.versionOptionTextSelected]}>{version.fullName}</Text>
               {bibleVersion === version.id && <Feather name="check" size={18} color="#fff" style={{ marginLeft: 8 }} />}
             </TouchableOpacity>
           ))}
@@ -1153,7 +1031,7 @@ export default function App() {
             <Text style={styles.settingLabel}>Hebrew & Greek Words</Text>
             <Text style={styles.settingDescription}>Tap words to see original meanings</Text>
           </View>
-          <Switch value={wordDefinitionsEnabled} onValueChange={setWordDefinitionsEnabled} trackColor={{ false: "rgba(255,255,255,0.2)", true: "#81b0ff" }} thumbColor={wordDefinitionsEnabled ? "#4a7c7e" : "#f4f3f4"} />
+          <Switch value={wordDefinitionsEnabled} onValueChange={setWordDefinitionsEnabled} trackColor={{ false: "rgba(255,255,255,0.2)", true: "#81b0ff" }} thumbColor={wordDefinitionsEnabled ? backgroundColor : "#f4f3f4"} />
         </View>
       </View>
 
@@ -1161,24 +1039,14 @@ export default function App() {
         <Text style={styles.aboutSectionTitle}>Bible Reading Font</Text>
         <Text style={styles.aboutText}>Choose your preferred font style for Scripture:</Text>
         <View style={styles.fontStyleOptions}>
-          <TouchableOpacity
-            style={[styles.fontStyleButton, bibleFontStyle === "sans-serif" && styles.fontStyleButtonSelected]}
-            onPress={() => saveBibleFontStyle("sans-serif")}
-          >
-            <Text style={[styles.fontStyleButtonText, bibleFontStyle === "sans-serif" && styles.fontStyleButtonTextSelected]}>
-              Sans-Serif
-            </Text>
+          <TouchableOpacity style={[styles.fontStyleButton, bibleFontStyle === "sans-serif" && styles.fontStyleButtonSelected]} onPress={() => saveBibleFontStyle("sans-serif")}>
+            <Text style={[styles.fontStyleButtonText, bibleFontStyle === "sans-serif" && styles.fontStyleButtonTextSelected]}>Sans-Serif</Text>
             <Text style={styles.fontStyleExample}>Simple & Modern</Text>
             {bibleFontStyle === "sans-serif" && <Feather name="check" size={18} color="#fff" style={{ marginTop: 4 }} />}
           </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.fontStyleButton, bibleFontStyle === "serif" && styles.fontStyleButtonSelected]}
-            onPress={() => saveBibleFontStyle("serif")}
-          >
-            <Text style={[styles.fontStyleButtonText, { fontFamily: Platform.OS === 'ios' ? 'Georgia' : 'serif' }, bibleFontStyle === "serif" && styles.fontStyleButtonTextSelected]}>
-              Serif
-            </Text>
-            <Text style={[styles.fontStyleExample, { fontFamily: Platform.OS === 'ios' ? 'Georgia' : 'serif' }]}>Traditional & Classic</Text>
+          <TouchableOpacity style={[styles.fontStyleButton, bibleFontStyle === "serif" && styles.fontStyleButtonSelected]} onPress={() => saveBibleFontStyle("serif")}>
+            <Text style={[styles.fontStyleButtonText, { fontFamily: Platform.OS === "ios" ? "Georgia" : "serif" }, bibleFontStyle === "serif" && styles.fontStyleButtonTextSelected]}>Serif</Text>
+            <Text style={[styles.fontStyleExample, { fontFamily: Platform.OS === "ios" ? "Georgia" : "serif" }]}>Traditional & Classic</Text>
             {bibleFontStyle === "serif" && <Feather name="check" size={18} color="#fff" style={{ marginTop: 4 }} />}
           </TouchableOpacity>
         </View>
@@ -1213,6 +1081,15 @@ export default function App() {
           <Text style={styles.streakCardLabel}>Day Streak</Text>
           <Text style={styles.streakCardDescription}>Keep visiting daily to maintain your streak!</Text>
         </View>
+      </View>
+
+      <View style={styles.aboutSection}>
+        <Text style={styles.aboutSectionTitle}>Support Development</Text>
+        <Text style={styles.aboutText}>LuminaVerse is completely free with no ads or paywalls. If you find it valuable and would like to support continued development, you can leave an optional donation. Thank you for using LuminaVerse! 🙏</Text>
+        <TouchableOpacity onPress={() => Linking.openURL("https://square.link/u/kaGQJGzZ")} style={[styles.donationButton, { backgroundColor: backgroundColor }]}>
+          <Feather name="heart" size={20} color="#fff" />
+          <Text style={styles.donationButtonText}>Support via Donation</Text>
+        </TouchableOpacity>
       </View>
 
       <View style={styles.aboutSection}>
@@ -1254,7 +1131,7 @@ export default function App() {
 
       {currentScreen === "home" && renderHome()}
       {currentScreen === "favorites" && renderFavorites()}
-      {currentScreen === "bible" && <BibleReader onSaveVerse={handleSaveFromBible} fontStyle={bibleFontStyle} />}
+      {currentScreen === "bible" && <BibleReader onSaveVerse={handleSaveFromBible} fontStyle={bibleFontStyle} themeColor={backgroundColor} />}
       {currentScreen === "topics" && renderTopics()}
       {currentScreen === "settings" && renderSettings()}
 
@@ -1452,9 +1329,6 @@ const styles = StyleSheet.create({
     paddingVertical: 0,
     paddingHorizontal: 0
   },
-  shareButton: {
-    marginTop: 0
-  },
   buttonDisabled: {
     opacity: 0.5
   },
@@ -1614,6 +1488,25 @@ const styles = StyleSheet.create({
   supportButtonText: {
     fontSize: 16,
     fontWeight: "500",
+    color: "#fff"
+  },
+  donationButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    padding: 16,
+    borderRadius: 12,
+    marginTop: 12,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 3
+  },
+  donationButtonText: {
+    fontSize: 16,
+    fontWeight: "600",
     color: "#fff"
   },
   streakBadge: {
@@ -1859,8 +1752,7 @@ const styles = StyleSheet.create({
     borderColor: "transparent"
   },
   musicTrackButtonActive: {
-    backgroundColor: "rgba(255, 255, 255, 0.2)",
-    borderColor: "#4a7c7e"
+    backgroundColor: "rgba(255, 255, 255, 0.2)"
   },
   musicTrackName: {
     fontSize: 16,
@@ -1873,7 +1765,6 @@ const styles = StyleSheet.create({
   },
   nowPlayingText: {
     fontSize: 12,
-    color: "#4a7c7e",
     marginTop: 2,
     fontStyle: "italic"
   },
@@ -1987,15 +1878,6 @@ const styles = StyleSheet.create({
   topicVerseActionButton: {
     flexDirection: "row",
     alignItems: "center",
-    paddingVertical: 6,
-    paddingHorizontal: 12,
-    backgroundColor: "rgba(255, 255, 255, 0.1)",
-    borderRadius: 6
-  },
-  topicVerseShareButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    alignSelf: "flex-start",
     paddingVertical: 6,
     paddingHorizontal: 12,
     backgroundColor: "rgba(255, 255, 255, 0.1)",

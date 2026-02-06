@@ -1,27 +1,27 @@
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, FlatList, TextInput, ActivityIndicator, Alert, Platform } from "react-native"
 import { Feather } from "@expo/vector-icons"
 import AsyncStorage from "@react-native-async-storage/async-storage"
-import {
-  BIBLE_VERSIONS,
-  isVersionDownloaded,
-  downloadBibleVersion,
-  deleteDownloadedVersion,
-  loadBibleData,
-  fetchChapterFromAPI,
-  BOOK_NAMES,
-  type BibleVersion,
-  type BibleBook
-} from "./bibleData"
+import { BIBLE_VERSIONS, isVersionDownloaded, downloadBibleVersion, deleteDownloadedVersion, loadBibleData, fetchChapterFromAPI, BOOK_NAMES, type BibleVersion, type BibleBook } from "./bibleData"
 
 type ViewMode = "version-picker" | "books" | "chapters" | "verses"
+
+interface VerseSearchResult {
+  bookIndex: number
+  bookName: string
+  chapterIndex: number
+  verseIndex: number
+  verseText: string
+  reference: string
+}
 
 interface BibleReaderProps {
   onSaveVerse?: (verse: string, reference: string) => void
   fontStyle?: "sans-serif" | "serif"
+  themeColor?: string
 }
 
-export default function BibleReader({ onSaveVerse, fontStyle = "sans-serif" }: BibleReaderProps) {
+export default function BibleReader({ onSaveVerse, fontStyle = "sans-serif", themeColor = "#4a7c7e" }: BibleReaderProps) {
   const [viewMode, setViewMode] = useState<ViewMode>("version-picker")
   const [selectedVersion, setSelectedVersion] = useState<BibleVersion>("kjv")
   const [downloadedVersions, setDownloadedVersions] = useState<BibleVersion[]>([])
@@ -36,6 +36,13 @@ export default function BibleReader({ onSaveVerse, fontStyle = "sans-serif" }: B
   const [books, setBooks] = useState<BibleBook[]>([])
   const [chapterVerses, setChapterVerses] = useState<string[] | null>(null)
   const [loading, setLoading] = useState(false)
+  const [loadError, setLoadError] = useState(false)
+  const [verseSearchResults, setVerseSearchResults] = useState<VerseSearchResult[]>([])
+  const [searching, setSearching] = useState(false)
+  const [highlightedVerse, setHighlightedVerse] = useState<number | null>(null)
+  const [fromSearch, setFromSearch] = useState(false)
+  const scrollViewRef = useRef<ScrollView>(null)
+  const verseYPositions = useRef<{ [key: number]: number }>({})
 
   useEffect(() => {
     checkDownloadedVersions()
@@ -76,7 +83,7 @@ export default function BibleReader({ onSaveVerse, fontStyle = "sans-serif" }: B
     setDownloadingVersion(version)
     setDownloadProgress(0)
 
-    const success = await downloadBibleVersion(version, (progress) => {
+    const success = await downloadBibleVersion(version, progress => {
       setDownloadProgress(progress)
     })
 
@@ -91,30 +98,26 @@ export default function BibleReader({ onSaveVerse, fontStyle = "sans-serif" }: B
   }
 
   const handleDelete = async (version: BibleVersion) => {
-    Alert.alert(
-      "Delete Bible Version",
-      `Remove ${BIBLE_VERSIONS.find(v => v.id === version)?.fullName} from your device?`,
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Delete",
-          style: "destructive",
-          onPress: async () => {
-            const success = await deleteDownloadedVersion(version)
-            if (success) {
-              await checkDownloadedVersions()
-              Alert.alert("Deleted", "Bible version removed from your device.")
-            }
+    Alert.alert("Delete Bible Version", `Remove ${BIBLE_VERSIONS.find(v => v.id === version)?.fullName} from your device?`, [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Delete",
+        style: "destructive",
+        onPress: async () => {
+          const success = await deleteDownloadedVersion(version)
+          if (success) {
+            await checkDownloadedVersions()
+            Alert.alert("Deleted", "Bible version removed from your device.")
           }
         }
-      ]
-    )
+      }
+    ])
   }
 
   const handleVersionSelect = async (version: BibleVersion) => {
     await saveSelectedVersion(version)
     const isDownloaded = downloadedVersions.includes(version)
-    
+
     if (isDownloaded) {
       // Load offline data
       setLoading(true)
@@ -134,12 +137,45 @@ export default function BibleReader({ onSaveVerse, fontStyle = "sans-serif" }: B
     setSelectedBookName(bookName)
     setSelectedChapterCount(chapterCount)
     setSelectedChapterIndex(null)
+    setSearchQuery("")
+    setVerseSearchResults([])
     setViewMode("chapters")
+  }
+
+  const handleVerseResultTap = async (result: VerseSearchResult) => {
+    setSelectedBookIndex(result.bookIndex)
+    setSelectedBookName(result.bookName)
+    setSelectedChapterIndex(result.chapterIndex)
+    setHighlightedVerse(result.verseIndex)
+    setFromSearch(true)
+    setSearchQuery("")
+    setVerseSearchResults([])
+
+    // Load the chapter
+    setLoading(true)
+    setLoadError(false)
+    setViewMode("verses")
+
+    const isDownloaded = downloadedVersions.includes(selectedVersion)
+    if (isDownloaded && books.length > 0) {
+      setChapterVerses(books[result.bookIndex].chapters[result.chapterIndex] || null)
+    } else {
+      const verses = await fetchChapterFromAPI(result.bookName, result.chapterIndex + 1, selectedVersion)
+      if (!verses) {
+        setLoadError(true)
+      }
+      setChapterVerses(verses)
+    }
+
+    setLoading(false)
   }
 
   const handleChapterSelect = async (chapterIndex: number) => {
     setSelectedChapterIndex(chapterIndex)
+    setHighlightedVerse(null)
+    setFromSearch(false)
     setLoading(true)
+    setLoadError(false)
     setViewMode("verses")
 
     const isDownloaded = downloadedVersions.includes(selectedVersion)
@@ -153,21 +189,69 @@ export default function BibleReader({ onSaveVerse, fontStyle = "sans-serif" }: B
     } else {
       // Fetch from API
       const verses = await fetchChapterFromAPI(selectedBookName, chapterIndex + 1, selectedVersion)
+      if (!verses) {
+        setLoadError(true)
+      }
       setChapterVerses(verses)
     }
 
     setLoading(false)
   }
 
+  const searchVerses = async (query: string) => {
+    if (!query.trim() || books.length === 0) {
+      setVerseSearchResults([])
+      return
+    }
+
+    setSearching(true)
+    const results: VerseSearchResult[] = []
+    const searchLower = query.toLowerCase()
+
+    try {
+      books.forEach((book, bookIndex) => {
+        book.chapters.forEach((chapter, chapterIndex) => {
+          chapter.forEach((verse, verseIndex) => {
+            if (verse.toLowerCase().includes(searchLower)) {
+              results.push({
+                bookIndex,
+                bookName: book.name,
+                chapterIndex,
+                verseIndex,
+                verseText: verse,
+                reference: `${book.name} ${chapterIndex + 1}:${verseIndex + 1}`
+              })
+            }
+          })
+        })
+      })
+
+      setVerseSearchResults(results.slice(0, 50)) // Limit to 50 results
+    } catch (error) {
+      console.error("Error searching verses:", error)
+    } finally {
+      setSearching(false)
+    }
+  }
+
   const handleBack = () => {
     if (viewMode === "verses") {
-      setViewMode("chapters")
+      if (fromSearch) {
+        // Return directly to search results
+        setViewMode("books")
+        setFromSearch(false)
+        setHighlightedVerse(null)
+      } else {
+        setViewMode("chapters")
+      }
       setChapterVerses(null)
     } else if (viewMode === "chapters") {
       setViewMode("books")
       setSelectedBookIndex(null)
     } else if (viewMode === "books") {
       setViewMode("version-picker")
+      setSearchQuery("")
+      setVerseSearchResults([])
     }
   }
 
@@ -180,46 +264,39 @@ export default function BibleReader({ onSaveVerse, fontStyle = "sans-serif" }: B
         </View>
 
         <ScrollView contentContainerStyle={styles.versionList}>
-          {BIBLE_VERSIONS.map((version) => {
+          {BIBLE_VERSIONS.map(version => {
             const isDownloaded = downloadedVersions.includes(version.id)
             const isDownloading = downloadingVersion === version.id
 
             return (
               <View key={version.id} style={styles.versionCard}>
-                <TouchableOpacity 
-                  style={styles.versionInfo}
-                  onPress={() => handleVersionSelect(version.id)}
-                >
+                <TouchableOpacity style={styles.versionInfo} onPress={() => handleVersionSelect(version.id)}>
                   <View>
                     <Text style={styles.versionName}>{version.fullName}</Text>
-                    <Text style={styles.versionDetail}>{version.name} • {version.size}</Text>
-                    {isDownloaded && <Text style={styles.offlineBadge}>✓ Available Offline</Text>}
+                    <Text style={styles.versionDetail}>
+                      {version.name} • {version.size}
+                    </Text>
+                    {isDownloaded && <Text style={[styles.offlineBadge, { color: themeColor }]}>✓ Available Offline</Text>}
                     {!isDownloaded && <Text style={styles.onlineBadge}>📡 Online Only</Text>}
                   </View>
-                  <Feather name="chevron-right" size={24} color="#4a7c7e" />
+                  <Feather name="chevron-right" size={24} color={themeColor} />
                 </TouchableOpacity>
 
                 <View style={styles.versionActions}>
                   {isDownloading ? (
                     <View style={styles.downloadProgress}>
-                      <ActivityIndicator color="#4a7c7e" />
-                      <Text style={styles.downloadText}>{Math.round(downloadProgress * 100)}%</Text>
+                      <ActivityIndicator color={themeColor} />
+                      <Text style={[styles.downloadText, { color: themeColor }]}>{Math.round(downloadProgress * 100)}%</Text>
                     </View>
                   ) : isDownloaded ? (
-                    <TouchableOpacity 
-                      style={styles.deleteButton}
-                      onPress={() => handleDelete(version.id)}
-                    >
+                    <TouchableOpacity style={styles.deleteButton} onPress={() => handleDelete(version.id)}>
                       <Feather name="trash-2" size={18} color="#ff6b6b" />
                       <Text style={styles.deleteText}>Delete</Text>
                     </TouchableOpacity>
                   ) : (
-                    <TouchableOpacity 
-                      style={styles.downloadButton}
-                      onPress={() => handleDownload(version.id)}
-                    >
-                      <Feather name="download" size={18} color="#4a7c7e" />
-                      <Text style={styles.downloadButtonText}>Download</Text>
+                    <TouchableOpacity style={styles.downloadButton} onPress={() => handleDownload(version.id)}>
+                      <Feather name="download" size={18} color={themeColor} />
+                      <Text style={[styles.downloadButtonText, { color: themeColor }]}>Download</Text>
                     </TouchableOpacity>
                   )}
                 </View>
@@ -229,9 +306,7 @@ export default function BibleReader({ onSaveVerse, fontStyle = "sans-serif" }: B
 
           <View style={styles.infoBox}>
             <Feather name="info" size={16} color="#888" />
-            <Text style={styles.infoText}>
-              Download for offline reading or read online with internet connection. All versions are free.
-            </Text>
+            <Text style={styles.infoText}>Download for offline reading or read online with internet connection. All versions are free.</Text>
           </View>
         </ScrollView>
       </View>
@@ -243,12 +318,14 @@ export default function BibleReader({ onSaveVerse, fontStyle = "sans-serif" }: B
     const versionInfo = BIBLE_VERSIONS.find(v => v.id === selectedVersion)
 
     // If downloaded, use actual book data; otherwise use static list
-    const bookList = isDownloaded && books.length > 0 ? books : 
-      BOOK_NAMES.map((name, index) => ({
-        name,
-        abbrev: name.toLowerCase().replace(/\s+/g, ''),
-        chapters: [] // Empty array so getDefaultChapterCount is used
-      }))
+    const bookList =
+      isDownloaded && books.length > 0
+        ? books
+        : BOOK_NAMES.map((name, index) => ({
+            name,
+            abbrev: name.toLowerCase().replace(/\s+/g, ""),
+            chapters: [] // Empty array so getDefaultChapterCount is used
+          }))
 
     let filteredBooks = bookList
     if (testament === "old") {
@@ -257,17 +334,20 @@ export default function BibleReader({ onSaveVerse, fontStyle = "sans-serif" }: B
       filteredBooks = bookList.slice(39)
     }
 
+    // Filter books by name
+    let bookNameMatches = filteredBooks
     if (searchQuery.trim()) {
-      filteredBooks = filteredBooks.filter(book =>
-        book.name.toLowerCase().includes(searchQuery.toLowerCase())
-      )
+      bookNameMatches = filteredBooks.filter(book => book.name.toLowerCase().includes(searchQuery.toLowerCase()))
     }
+
+    // Show verse search results if available and have search query
+    const showVerseResults = isDownloaded && searchQuery.trim() && verseSearchResults.length > 0
 
     return (
       <View style={styles.container}>
         <View style={styles.header}>
           <TouchableOpacity onPress={handleBack} style={styles.backButton}>
-            <Feather name="arrow-left" size={24} color="#4a7c7e" />
+            <Feather name="arrow-left" size={24} color={themeColor} />
           </TouchableOpacity>
           <View style={{ flex: 1 }}>
             <Text style={styles.title}>{versionInfo?.name || "Bible"}</Text>
@@ -279,56 +359,107 @@ export default function BibleReader({ onSaveVerse, fontStyle = "sans-serif" }: B
           <Feather name="search" size={20} color="#888" />
           <TextInput
             style={styles.searchInput}
-            placeholder="Search books..."
+            placeholder={isDownloaded ? "Search books or verses..." : "Search books..."}
             value={searchQuery}
-            onChangeText={setSearchQuery}
+            onChangeText={text => {
+              setSearchQuery(text)
+              if (isDownloaded && text.trim().length >= 3) {
+                searchVerses(text)
+              } else {
+                setVerseSearchResults([])
+              }
+            }}
+            onSubmitEditing={() => {
+              if (isDownloaded && searchQuery.trim().length >= 3) {
+                searchVerses(searchQuery)
+              }
+            }}
+            returnKeyType="search"
             placeholderTextColor="#888"
           />
+          {searching && <ActivityIndicator size="small" color={themeColor} style={{ marginLeft: 8 }} />}
         </View>
 
         <View style={styles.testamentFilter}>
-          <TouchableOpacity
-            style={[styles.filterButton, testament === "all" && styles.filterButtonActive]}
-            onPress={() => setTestament("all")}
-          >
+          <TouchableOpacity style={[styles.filterButton, testament === "all" && styles.filterButtonActive, testament === "all" && { backgroundColor: themeColor, borderColor: themeColor }]} onPress={() => setTestament("all")}>
             <Text style={[styles.filterText, testament === "all" && styles.filterTextActive]}>All</Text>
           </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.filterButton, testament === "old" && styles.filterButtonActive]}
-            onPress={() => setTestament("old")}
-          >
+          <TouchableOpacity style={[styles.filterButton, testament === "old" && styles.filterButtonActive, testament === "old" && { backgroundColor: themeColor, borderColor: themeColor }]} onPress={() => setTestament("old")}>
             <Text style={[styles.filterText, testament === "old" && styles.filterTextActive]}>Old</Text>
           </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.filterButton, testament === "new" && styles.filterButtonActive]}
-            onPress={() => setTestament("new")}
-          >
+          <TouchableOpacity style={[styles.filterButton, testament === "new" && styles.filterButtonActive, testament === "new" && { backgroundColor: themeColor, borderColor: themeColor }]} onPress={() => setTestament("new")}>
             <Text style={[styles.filterText, testament === "new" && styles.filterTextActive]}>New</Text>
           </TouchableOpacity>
         </View>
 
-        <FlatList
-          data={filteredBooks}
-          keyExtractor={(item, index) => `${item.name}-${index}`}
-          renderItem={({ item, index }) => {
-            const actualIndex = BOOK_NAMES.indexOf(item.name)
-            const chapterCount = item.chapters?.length || getDefaultChapterCount(item.name)
-            
-            return (
-              <TouchableOpacity
-                style={styles.bookItem}
-                onPress={() => handleBookSelect(actualIndex, item.name, chapterCount)}
-              >
-                <View>
-                  <Text style={styles.bookName}>{item.name}</Text>
-                  <Text style={styles.bookInfo}>{chapterCount} chapters</Text>
+        {showVerseResults ? (
+          <FlatList
+            data={verseSearchResults}
+            keyExtractor={(item, index) => `${item.reference}-${index}`}
+            renderItem={({ item }) => (
+              <TouchableOpacity style={styles.verseResultItem} onPress={() => handleVerseResultTap(item)}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.verseResultReference}>{item.reference}</Text>
+                  <Text style={styles.verseResultText} numberOfLines={2}>
+                    {item.verseText}
+                  </Text>
                 </View>
-                <Feather name="chevron-right" size={24} color="#4a7c7e" />
+                <Feather name="chevron-right" size={24} color={themeColor} />
               </TouchableOpacity>
-            )
-          }}
-          contentContainerStyle={styles.list}
-        />
+            )}
+            contentContainerStyle={styles.list}
+            ListHeaderComponent={
+              <View style={styles.searchResultsHeader}>
+                <Text style={styles.searchResultsHeaderText}>
+                  {verseSearchResults.length} verse{verseSearchResults.length !== 1 ? "s" : ""} found
+                  {verseSearchResults.length === 50 ? " (showing first 50)" : ""}
+                </Text>
+              </View>
+            }
+            ListEmptyComponent={
+              searching ? (
+                <View style={styles.emptySearch}>
+                  <ActivityIndicator size="large" color={themeColor} />
+                  <Text style={styles.emptySearchText}>Searching...</Text>
+                </View>
+              ) : null
+            }
+          />
+        ) : (
+          <FlatList
+            data={bookNameMatches}
+            keyExtractor={(item, index) => `${item.name}-${index}`}
+            renderItem={({ item, index }) => {
+              const actualIndex = BOOK_NAMES.indexOf(item.name)
+              const chapterCount = item.chapters?.length || getDefaultChapterCount(item.name)
+
+              return (
+                <TouchableOpacity style={styles.bookItem} onPress={() => handleBookSelect(actualIndex, item.name, chapterCount)}>
+                  <View>
+                    <Text style={styles.bookName}>{item.name}</Text>
+                    <Text style={styles.bookInfo}>{chapterCount} chapters</Text>
+                  </View>
+                  <Feather name="chevron-right" size={24} color={themeColor} />
+                </TouchableOpacity>
+              )
+            }}
+            contentContainerStyle={styles.list}
+            ListEmptyComponent={
+              searchQuery.trim() && !isDownloaded ? (
+                <View style={styles.emptySearch}>
+                  <Feather name="info" size={32} color="#ccc" />
+                  <Text style={styles.emptySearchText}>Download this Bible version to search verses</Text>
+                </View>
+              ) : searchQuery.trim() ? (
+                <View style={styles.emptySearch}>
+                  <Feather name="search" size={32} color="#ccc" />
+                  <Text style={styles.emptySearchText}>No books found</Text>
+                  {isDownloaded && <Text style={styles.emptySearchSubtext}>Type at least 3 characters to search verses</Text>}
+                </View>
+              ) : null
+            }
+          />
+        )}
       </View>
     )
   }
@@ -340,7 +471,7 @@ export default function BibleReader({ onSaveVerse, fontStyle = "sans-serif" }: B
       <View style={styles.container}>
         <View style={styles.header}>
           <TouchableOpacity onPress={handleBack} style={styles.backButton}>
-            <Feather name="arrow-left" size={24} color="#4a7c7e" />
+            <Feather name="arrow-left" size={24} color={themeColor} />
           </TouchableOpacity>
           <View style={{ flex: 1 }}>
             <Text style={styles.title}>{selectedBookName}</Text>
@@ -350,12 +481,8 @@ export default function BibleReader({ onSaveVerse, fontStyle = "sans-serif" }: B
 
         <ScrollView contentContainerStyle={styles.chapterGrid}>
           {chapters.map((chapterNum, index) => (
-            <TouchableOpacity
-              key={index}
-              style={styles.chapterButton}
-              onPress={() => handleChapterSelect(index)}
-            >
-              <Text style={styles.chapterNumber}>{chapterNum}</Text>
+            <TouchableOpacity key={index} style={styles.chapterButton} onPress={() => handleChapterSelect(index)}>
+              <Text style={[styles.chapterNumber, { color: themeColor }]}>{chapterNum}</Text>
             </TouchableOpacity>
           ))}
         </ScrollView>
@@ -364,13 +491,37 @@ export default function BibleReader({ onSaveVerse, fontStyle = "sans-serif" }: B
   }
 
   const renderVerses = () => {
-    const fontFamily = fontStyle === "serif" ? (Platform.OS === 'ios' ? 'Georgia' : 'serif') : undefined
+    const fontFamily = fontStyle === "serif" ? (Platform.OS === "ios" ? "Georgia" : "serif") : undefined
 
-    if (loading || !chapterVerses) {
+    if (loading) {
       return (
         <View style={[styles.container, styles.loadingContainer]}>
-          <ActivityIndicator size="large" color="#4a7c7e" />
+          <ActivityIndicator size="large" color={themeColor} />
           <Text style={styles.loadingText}>Loading chapter...</Text>
+        </View>
+      )
+    }
+
+    if (loadError || !chapterVerses) {
+      return (
+        <View style={styles.container}>
+          <View style={styles.header}>
+            <TouchableOpacity onPress={handleBack} style={styles.backButton}>
+              <Feather name="arrow-left" size={24} color={themeColor} />
+            </TouchableOpacity>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.title}>
+                {selectedBookName} {(selectedChapterIndex ?? 0) + 1}
+              </Text>
+            </View>
+          </View>
+          <View style={[styles.container, styles.loadingContainer]}>
+            <Feather name="wifi-off" size={48} color="#ccc" />
+            <Text style={[styles.loadingText, { marginTop: 16, textAlign: "center", paddingHorizontal: 32 }]}>Failed to load chapter. Check your internet connection or download this version for offline reading.</Text>
+            <TouchableOpacity onPress={() => handleChapterSelect(selectedChapterIndex ?? 0)} style={{ marginTop: 16, backgroundColor: themeColor, paddingHorizontal: 24, paddingVertical: 12, borderRadius: 8 }}>
+              <Text style={{ color: "#fff", fontWeight: "600", fontSize: 16 }}>Retry</Text>
+            </TouchableOpacity>
+          </View>
         </View>
       )
     }
@@ -379,22 +530,41 @@ export default function BibleReader({ onSaveVerse, fontStyle = "sans-serif" }: B
       <View style={styles.container}>
         <View style={styles.header}>
           <TouchableOpacity onPress={handleBack} style={styles.backButton}>
-            <Feather name="arrow-left" size={24} color="#4a7c7e" />
+            <Feather name="arrow-left" size={24} color={themeColor} />
           </TouchableOpacity>
           <View style={{ flex: 1 }}>
-            <Text style={styles.title}>{selectedBookName} {(selectedChapterIndex ?? 0) + 1}</Text>
+            <Text style={styles.title}>
+              {selectedBookName} {(selectedChapterIndex ?? 0) + 1}
+            </Text>
             <Text style={styles.subtitle}>{chapterVerses.length} verses</Text>
           </View>
         </View>
 
-        <ScrollView style={styles.versesContainer} contentContainerStyle={styles.versesContent}>
+        <ScrollView ref={scrollViewRef} style={styles.versesContainer} contentContainerStyle={styles.versesContent}>
           {chapterVerses.map((verse, index) => (
-            <View key={index} style={styles.verseRow}>
-              <Text style={styles.verseNumber}>{index + 1}</Text>
+            <View
+              key={index}
+              style={[styles.verseRow, highlightedVerse === index && { backgroundColor: `${themeColor}15`, borderLeftWidth: 4, borderLeftColor: themeColor, paddingLeft: 8, marginLeft: -12, borderRadius: 8 }]}
+              onLayout={event => {
+                const { y } = event.nativeEvent.layout
+                verseYPositions.current[index] = y
+
+                // Scroll to highlighted verse when its position is known
+                if (highlightedVerse === index && scrollViewRef.current) {
+                  setTimeout(() => {
+                    const yPosition = verseYPositions.current[index]
+                    if (yPosition !== undefined) {
+                      // Center the verse (approximate screen height of 600)
+                      const offsetY = Math.max(0, yPosition - 250)
+                      scrollViewRef.current?.scrollTo({ y: offsetY, animated: true })
+                    }
+                  }, 150)
+                }
+              }}
+            >
+              <Text style={[styles.verseNumber, { color: themeColor }]}>{index + 1}</Text>
               <View style={{ flex: 1 }}>
-                <Text style={[styles.verseText, fontFamily && { fontFamily }]}>
-                  {verse}
-                </Text>
+                <Text style={[styles.verseText, fontFamily && { fontFamily }]}>{verse}</Text>
                 {onSaveVerse && (
                   <TouchableOpacity
                     style={styles.saveVerseButton}
@@ -403,8 +573,8 @@ export default function BibleReader({ onSaveVerse, fontStyle = "sans-serif" }: B
                       onSaveVerse(verse, reference)
                     }}
                   >
-                    <Feather name="bookmark" size={16} color="#4a7c7e" />
-                    <Text style={styles.saveVerseText}>Save</Text>
+                    <Feather name="bookmark" size={16} color={themeColor} />
+                    <Text style={[styles.saveVerseText, { color: themeColor }]}>Save</Text>
                   </TouchableOpacity>
                 )}
               </View>
@@ -428,20 +598,72 @@ export default function BibleReader({ onSaveVerse, fontStyle = "sans-serif" }: B
 // Helper function to get chapter counts for books when not downloaded
 function getDefaultChapterCount(bookName: string): number {
   const counts: { [key: string]: number } = {
-    'Genesis': 50, 'Exodus': 40, 'Leviticus': 27, 'Numbers': 36, 'Deuteronomy': 34,
-    'Joshua': 24, 'Judges': 21, 'Ruth': 4, '1 Samuel': 31, '2 Samuel': 24,
-    '1 Kings': 22, '2 Kings': 25, '1 Chronicles': 29, '2 Chronicles': 36, 'Ezra': 10,
-    'Nehemiah': 13, 'Esther': 10, 'Job': 42, 'Psalms': 150, 'Proverbs': 31,
-    'Ecclesiastes': 12, 'Song of Solomon': 8, 'Isaiah': 66, 'Jeremiah': 52,
-    'Lamentations': 5, 'Ezekiel': 48, 'Daniel': 12, 'Hosea': 14, 'Joel': 3,
-    'Amos': 9, 'Obadiah': 1, 'Jonah': 4, 'Micah': 7, 'Nahum': 3,
-    'Habakkuk': 3, 'Zephaniah': 3, 'Haggai': 2, 'Zechariah': 14, 'Malachi': 4,
-    'Matthew': 28, 'Mark': 16, 'Luke': 24, 'John': 21, 'Acts': 28,
-    'Romans': 16, '1 Corinthians': 16, '2 Corinthians': 13, 'Galatians': 6, 'Ephesians': 6,
-    'Philippians': 4, 'Colossians': 4, '1 Thessalonians': 5, '2 Thessalonians': 3,
-    '1 Timothy': 6, '2 Timothy': 4, 'Titus': 3, 'Philemon': 1, 'Hebrews': 13,
-    'James': 5, '1 Peter': 5, '2 Peter': 3, '1 John': 5, '2 John': 1,
-    '3 John': 1, 'Jude': 1, 'Revelation': 22
+    Genesis: 50,
+    Exodus: 40,
+    Leviticus: 27,
+    Numbers: 36,
+    Deuteronomy: 34,
+    Joshua: 24,
+    Judges: 21,
+    Ruth: 4,
+    "1 Samuel": 31,
+    "2 Samuel": 24,
+    "1 Kings": 22,
+    "2 Kings": 25,
+    "1 Chronicles": 29,
+    "2 Chronicles": 36,
+    Ezra: 10,
+    Nehemiah: 13,
+    Esther: 10,
+    Job: 42,
+    Psalms: 150,
+    Proverbs: 31,
+    Ecclesiastes: 12,
+    "Song of Solomon": 8,
+    Isaiah: 66,
+    Jeremiah: 52,
+    Lamentations: 5,
+    Ezekiel: 48,
+    Daniel: 12,
+    Hosea: 14,
+    Joel: 3,
+    Amos: 9,
+    Obadiah: 1,
+    Jonah: 4,
+    Micah: 7,
+    Nahum: 3,
+    Habakkuk: 3,
+    Zephaniah: 3,
+    Haggai: 2,
+    Zechariah: 14,
+    Malachi: 4,
+    Matthew: 28,
+    Mark: 16,
+    Luke: 24,
+    John: 21,
+    Acts: 28,
+    Romans: 16,
+    "1 Corinthians": 16,
+    "2 Corinthians": 13,
+    Galatians: 6,
+    Ephesians: 6,
+    Philippians: 4,
+    Colossians: 4,
+    "1 Thessalonians": 5,
+    "2 Thessalonians": 3,
+    "1 Timothy": 6,
+    "2 Timothy": 4,
+    Titus: 3,
+    Philemon: 1,
+    Hebrews: 13,
+    James: 5,
+    "1 Peter": 5,
+    "2 Peter": 3,
+    "1 John": 5,
+    "2 John": 1,
+    "3 John": 1,
+    Jude: 1,
+    Revelation: 22
   }
   return counts[bookName] || 1
 }
@@ -509,7 +731,6 @@ const styles = StyleSheet.create({
   },
   offlineBadge: {
     fontSize: 12,
-    color: "#4a7c7e",
     fontWeight: "600"
   },
   onlineBadge: {
@@ -528,7 +749,6 @@ const styles = StyleSheet.create({
     gap: 8
   },
   downloadButtonText: {
-    color: "#4a7c7e",
     fontWeight: "600",
     fontSize: 14
   },
@@ -548,8 +768,7 @@ const styles = StyleSheet.create({
     gap: 8
   },
   downloadText: {
-    fontSize: 14,
-    color: "#4a7c7e"
+    fontSize: 14
   },
   infoBox: {
     flexDirection: "row",
@@ -602,8 +821,7 @@ const styles = StyleSheet.create({
     borderColor: "#e0e0e0"
   },
   filterButtonActive: {
-    backgroundColor: "#4a7c7e",
-    borderColor: "#4a7c7e"
+    borderWidth: 2
   },
   filterText: {
     fontSize: 12,
@@ -661,8 +879,7 @@ const styles = StyleSheet.create({
   },
   chapterNumber: {
     fontSize: 20,
-    fontWeight: "600",
-    color: "#4a7c7e"
+    fontWeight: "600"
   },
   versesContainer: {
     flex: 1
@@ -678,7 +895,6 @@ const styles = StyleSheet.create({
   verseNumber: {
     fontSize: 14,
     fontWeight: "bold",
-    color: "#4a7c7e",
     minWidth: 32
   },
   verseText: {
@@ -694,7 +910,6 @@ const styles = StyleSheet.create({
   },
   saveVerseText: {
     fontSize: 12,
-    color: "#4a7c7e",
     fontWeight: "600"
   },
   loadingContainer: {
@@ -705,5 +920,62 @@ const styles = StyleSheet.create({
     marginTop: 16,
     fontSize: 16,
     color: "#888"
+  },
+  verseResultItem: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    backgroundColor: "#fff",
+    padding: 16,
+    marginBottom: 12,
+    borderRadius: 12,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3
+  },
+  verseResultReference: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#333",
+    marginBottom: 6
+  },
+  verseResultText: {
+    fontSize: 14,
+    lineHeight: 20,
+    color: "#666"
+  },
+  searchResultsHeader: {
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    backgroundColor: "#f5f5f5",
+    borderRadius: 8,
+    marginBottom: 16
+  },
+  searchResultsHeaderText: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#666",
+    textAlign: "center"
+  },
+  emptySearch: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    paddingVertical: 60,
+    paddingHorizontal: 32
+  },
+  emptySearchText: {
+    fontSize: 16,
+    color: "#888",
+    marginTop: 16,
+    textAlign: "center"
+  },
+  emptySearchSubtext: {
+    fontSize: 13,
+    color: "#aaa",
+    marginTop: 8,
+    textAlign: "center"
   }
 })
