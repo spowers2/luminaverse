@@ -247,7 +247,7 @@ export default function BibleReader({ onSaveVerse, fontStyle = "sans-serif" }: B
       BOOK_NAMES.map((name, index) => ({
         name,
         abbrev: name.toLowerCase().replace(/\s+/g, ''),
-        chapters: [[]] // Placeholder, will fetch from API
+        chapters: [] // Empty array so getDefaultChapterCount is used
       }))
 
     let filteredBooks = bookList
