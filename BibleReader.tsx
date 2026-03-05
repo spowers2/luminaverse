@@ -59,67 +59,86 @@ export default function BibleReader({ onSaveVerse, fontStyle = "sans-serif", the
   }, [initialReference])
 
   const navigateToReference = async (reference: string, version?: string) => {
-    // Parse reference e.g. "John 3:16", "1 Corinthians 13:4", "Song of Solomon 2:10"
-    const colonIdx = reference.lastIndexOf(":")
-    if (colonIdx === -1) { setLoading(false); return }
-    const verseNum = parseInt(reference.substring(colonIdx + 1), 10)
-    const bookChapter = reference.substring(0, colonIdx).trim()
-    const lastSpaceIdx = bookChapter.lastIndexOf(" ")
-    if (lastSpaceIdx === -1) { setLoading(false); return }
-    const bookName = bookChapter.substring(0, lastSpaceIdx).trim()
-    const chapterNum = parseInt(bookChapter.substring(lastSpaceIdx + 1), 10)
-    if (isNaN(verseNum) || isNaN(chapterNum)) { setLoading(false); return }
-    // Normalize book name variants returned by different Bible APIs
-    let normalizedBookName = bookName
-    if (normalizedBookName === "Psalm") normalizedBookName = "Psalms"
-    if (normalizedBookName === "Song Of Solomon") normalizedBookName = "Song of Solomon"
-    if (normalizedBookName === "Song of Songs") normalizedBookName = "Song of Solomon"
-    if (normalizedBookName === "Song Of Songs") normalizedBookName = "Song of Solomon"
-    if (normalizedBookName === "Revelation") normalizedBookName = "Revelation" // already correct, keep for clarity
-    const bookIndex = BOOK_NAMES.indexOf(normalizedBookName)
-    if (bookIndex === -1) { setLoading(false); return }
-
-    const targetVersion = (version as BibleVersion) || selectedVersion
-    if (targetVersion !== selectedVersion) {
-      await saveSelectedVersion(targetVersion)
-    }
-
-    const chapterCount = getDefaultChapterCount(normalizedBookName)
-    setSelectedBookIndex(bookIndex)
-    setSelectedBookName(normalizedBookName)
-    setSelectedChapterCount(chapterCount)
-    setSelectedChapterIndex(chapterNum - 1)
-    setHighlightedVerse(verseNum - 1)
-    setFromSearch(true)
-    setViewMode("verses")
-    setLoading(true)
-    setLoadError(false)
-    setChapterVerses(null)
-
-    const downloaded = await isVersionDownloaded(targetVersion)
-    let versesToSet: string[] | null = null
-
-    if (downloaded) {
-      const data = await loadBibleData(targetVersion)
-      const cachedChapter = data[bookIndex]?.chapters[chapterNum - 1]
-      if (cachedChapter && cachedChapter.length > 0) {
-        versesToSet = cachedChapter
+    try {
+      // Parse reference e.g. "John 3:16", "1 Corinthians 13:4", "Song of Solomon 2:10"
+      const colonIdx = reference.lastIndexOf(":")
+      if (colonIdx === -1) {
+        setLoading(false)
+        return
       }
-    }
+      const verseNum = parseInt(reference.substring(colonIdx + 1), 10)
+      const bookChapter = reference.substring(0, colonIdx).trim()
+      const lastSpaceIdx = bookChapter.lastIndexOf(" ")
+      if (lastSpaceIdx === -1) {
+        setLoading(false)
+        return
+      }
+      const bookName = bookChapter.substring(0, lastSpaceIdx).trim()
+      const chapterNum = parseInt(bookChapter.substring(lastSpaceIdx + 1), 10)
+      if (isNaN(verseNum) || isNaN(chapterNum)) {
+        setLoading(false)
+        return
+      }
+      // Normalize book name variants returned by different Bible APIs
+      let normalizedBookName = bookName
+      if (normalizedBookName === "Psalm") normalizedBookName = "Psalms"
+      if (normalizedBookName === "Song Of Solomon") normalizedBookName = "Song of Solomon"
+      if (normalizedBookName === "Song of Songs") normalizedBookName = "Song of Solomon"
+      if (normalizedBookName === "Song Of Songs") normalizedBookName = "Song of Solomon"
+      if (normalizedBookName === "Revelation") normalizedBookName = "Revelation"
+      const bookIndex = BOOK_NAMES.indexOf(normalizedBookName)
+      if (bookIndex === -1) {
+        setLoading(false)
+        return
+      }
 
-    // Fall back to API if not downloaded or cached chapter was empty (failed during download)
-    if (!versesToSet) {
-      versesToSet = await fetchChapterFromAPI(normalizedBookName, chapterNum, targetVersion)
-    }
+      const targetVersion = (version as BibleVersion) || selectedVersion
+      if (targetVersion !== selectedVersion) {
+        await saveSelectedVersion(targetVersion)
+      }
 
-    if (!versesToSet || versesToSet.length === 0) {
+      const chapterCount = getDefaultChapterCount(normalizedBookName)
+      setSelectedBookIndex(bookIndex)
+      setSelectedBookName(normalizedBookName)
+      setSelectedChapterCount(chapterCount)
+      setSelectedChapterIndex(chapterNum - 1)
+      setHighlightedVerse(verseNum - 1)
+      setFromSearch(true)
+      setViewMode("verses")
+      setLoading(true)
+      setLoadError(false)
+      setChapterVerses(null)
+
+      const downloaded = await isVersionDownloaded(targetVersion)
+      let versesToSet: string[] | null = null
+
+      if (downloaded) {
+        const data = await loadBibleData(targetVersion)
+        const cachedChapter = data[bookIndex]?.chapters[chapterNum - 1]
+        if (cachedChapter && cachedChapter.length > 0) {
+          versesToSet = cachedChapter
+        }
+      }
+
+      // Fall back to API if not downloaded or cached chapter was empty (failed during download)
+      if (!versesToSet) {
+        versesToSet = await fetchChapterFromAPI(normalizedBookName, chapterNum, targetVersion)
+      }
+
+      if (!versesToSet || versesToSet.length === 0) {
+        setLoadError(true)
+      } else {
+        setChapterVerses(versesToSet)
+      }
+
+      setLoading(false)
+      onInitialNavigationDone?.()
+    } catch (error) {
+      console.error(`[navigateToReference] EXCEPTION:`, error)
       setLoadError(true)
-    } else {
-      setChapterVerses(versesToSet)
+      setLoading(false)
+      onInitialNavigationDone?.()
     }
-
-    setLoading(false)
-    onInitialNavigationDone?.()
   }
 
   const loadSavedVersion = async () => {
@@ -263,26 +282,31 @@ export default function BibleReader({ onSaveVerse, fontStyle = "sans-serif", the
     setViewMode("verses")
     setChapterVerses(null)
 
-    const isDownloaded = downloadedVersions.includes(selectedVersion)
-    let versesToSet: string[] | null = null
+    try {
+      const isDownloaded = downloadedVersions.includes(selectedVersion)
+      let versesToSet: string[] | null = null
 
-    if (isDownloaded && selectedBookIndex !== null) {
-      const data = await loadBibleData(selectedVersion)
-      const cachedChapter = data[selectedBookIndex]?.chapters[chapterIndex]
-      if (cachedChapter && cachedChapter.length > 0) {
-        versesToSet = cachedChapter
+      if (isDownloaded && selectedBookIndex !== null) {
+        const data = await loadBibleData(selectedVersion)
+        const cachedChapter = data[selectedBookIndex]?.chapters[chapterIndex]
+        if (cachedChapter && cachedChapter.length > 0) {
+          versesToSet = cachedChapter
+        }
       }
-    }
 
-    // Fall back to API if not downloaded or cached chapter was empty (failed during download)
-    if (!versesToSet) {
-      versesToSet = await fetchChapterFromAPI(selectedBookName, chapterIndex + 1, selectedVersion)
-    }
+      // Fall back to API if not downloaded or cached chapter was empty (failed during download)
+      if (!versesToSet) {
+        versesToSet = await fetchChapterFromAPI(selectedBookName, chapterIndex + 1, selectedVersion)
+      }
 
-    if (!versesToSet || versesToSet.length === 0) {
+      if (!versesToSet || versesToSet.length === 0) {
+        setLoadError(true)
+      } else {
+        setChapterVerses(versesToSet)
+      }
+    } catch (error) {
+      console.error(`[handleChapterSelect] EXCEPTION:`, error)
       setLoadError(true)
-    } else {
-      setChapterVerses(versesToSet)
     }
 
     setLoading(false)
@@ -584,7 +608,6 @@ export default function BibleReader({ onSaveVerse, fontStyle = "sans-serif", the
 
   const renderVerses = () => {
     const fontFamily = fontStyle === "serif" ? (Platform.OS === "ios" ? "Georgia" : "serif") : undefined
-
     if (loading) {
       return (
         <View style={[styles.container, styles.loadingContainer]}>
