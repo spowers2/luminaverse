@@ -19,9 +19,12 @@ interface BibleReaderProps {
   onSaveVerse?: (verse: string, reference: string) => void
   fontStyle?: "sans-serif" | "serif"
   themeColor?: string
+  initialReference?: string | null
+  initialVersion?: string
+  onInitialNavigationDone?: () => void
 }
 
-export default function BibleReader({ onSaveVerse, fontStyle = "sans-serif", themeColor = "#4a7c7e" }: BibleReaderProps) {
+export default function BibleReader({ onSaveVerse, fontStyle = "sans-serif", themeColor = "#4a7c7e", initialReference, initialVersion, onInitialNavigationDone }: BibleReaderProps) {
   const [viewMode, setViewMode] = useState<ViewMode>("version-picker")
   const [selectedVersion, setSelectedVersion] = useState<BibleVersion>("kjv")
   const [downloadedVersions, setDownloadedVersions] = useState<BibleVersion[]>([])
@@ -48,6 +51,62 @@ export default function BibleReader({ onSaveVerse, fontStyle = "sans-serif", the
     checkDownloadedVersions()
     loadSavedVersion()
   }, [])
+
+  useEffect(() => {
+    if (initialReference) {
+      navigateToReference(initialReference, initialVersion)
+    }
+  }, [initialReference])
+
+  const navigateToReference = async (reference: string, version?: string) => {
+    // Parse reference e.g. "John 3:16", "1 Corinthians 13:4", "Song of Solomon 2:10"
+    const colonIdx = reference.lastIndexOf(":")
+    if (colonIdx === -1) return
+    const verseNum = parseInt(reference.substring(colonIdx + 1), 10)
+    const bookChapter = reference.substring(0, colonIdx).trim()
+    const lastSpaceIdx = bookChapter.lastIndexOf(" ")
+    if (lastSpaceIdx === -1) return
+    const bookName = bookChapter.substring(0, lastSpaceIdx).trim()
+    const chapterNum = parseInt(bookChapter.substring(lastSpaceIdx + 1), 10)
+    if (isNaN(verseNum) || isNaN(chapterNum)) return
+    const bookIndex = BOOK_NAMES.indexOf(bookName)
+    if (bookIndex === -1) return
+
+    const targetVersion = (version as BibleVersion) || selectedVersion
+    if (targetVersion !== selectedVersion) {
+      await saveSelectedVersion(targetVersion)
+    }
+
+    const chapterCount = getDefaultChapterCount(bookName)
+    setSelectedBookIndex(bookIndex)
+    setSelectedBookName(bookName)
+    setSelectedChapterCount(chapterCount)
+    setSelectedChapterIndex(chapterNum - 1)
+    setHighlightedVerse(verseNum - 1)
+    setFromSearch(true)
+    setViewMode("verses")
+    setLoading(true)
+    setLoadError(false)
+
+    const downloaded = await isVersionDownloaded(targetVersion)
+    if (downloaded) {
+      const data = await loadBibleData(targetVersion)
+      if (data[bookIndex] && data[bookIndex].chapters[chapterNum - 1]) {
+        setChapterVerses(data[bookIndex].chapters[chapterNum - 1])
+      } else {
+        setLoadError(true)
+      }
+    } else {
+      const verses = await fetchChapterFromAPI(bookName, chapterNum, targetVersion)
+      if (!verses) {
+        setLoadError(true)
+      }
+      setChapterVerses(verses)
+    }
+
+    setLoading(false)
+    onInitialNavigationDone?.()
+  }
 
   const loadSavedVersion = async () => {
     try {
@@ -259,8 +318,10 @@ export default function BibleReader({ onSaveVerse, fontStyle = "sans-serif", the
     return (
       <View style={styles.container}>
         <View style={styles.header}>
-          <Text style={styles.title}>Bible Reader</Text>
-          <Text style={styles.subtitle}>Choose a version</Text>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.title}>Bible Reader</Text>
+            <Text style={styles.subtitle}>Choose a version</Text>
+          </View>
         </View>
 
         <ScrollView contentContainerStyle={styles.versionList}>
@@ -696,7 +757,7 @@ const styles = StyleSheet.create({
   subtitle: {
     fontSize: 14,
     color: "#888",
-    marginTop: 4
+    marginTop: 6
   },
   versionList: {
     padding: 16

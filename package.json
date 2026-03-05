@@ -1,6 +1,6 @@
 {
   "name": "bible-verse-mobile",
-  "version": "1.3.0",
+  "version": "1.4.0",
   "main": "index.ts",
   "scripts": {
     "start": "expo start",
@@ -26,6 +26,7 @@
     "react-native-view-shot": "^4.0.3"
   },
   "devDependencies": {
+    "@expo/ngrok": "^4.1.3",
     "@types/react": "~19.1.0",
     "typescript": "~5.9.2"
   },

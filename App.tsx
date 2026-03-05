@@ -4,11 +4,12 @@ import { StatusBar } from "expo-status-bar"
 import { Feather } from "@expo/vector-icons"
 import AsyncStorage from "@react-native-async-storage/async-storage"
 import * as Notifications from "expo-notifications"
-import { useAudioPlayer, AudioSource } from "expo-audio"
+import { useAudioPlayer, AudioSource, setAudioModeAsync } from "expo-audio"
 import DateTimePicker from "@react-native-community/datetimepicker"
 import { Accelerometer } from "expo-sensors"
 import { getWordDefinition, type WordDefinition } from "./wordDefinitions"
 import { topics, getVersesByTopic, type Topic, type TopicalVerse } from "./topicalVerses"
+import { getTodaysDevotional, type Devotional } from "./devotionals"
 import BibleReader from "./BibleReader"
 import { BIBLE_VERSIONS } from "./bibleData"
 import * as MediaLibrary from "expo-media-library"
@@ -59,6 +60,9 @@ export default function App() {
   const [savingImage, setSavingImage] = useState(false)
   const [savingTopicVerseIndex, setSavingTopicVerseIndex] = useState<number | null>(null)
   const [bibleFontStyle, setBibleFontStyle] = useState<"sans-serif" | "serif">("sans-serif")
+  const [bibleInitialRef, setBibleInitialRef] = useState<string | null>(null)
+  const [devotionalExpanded, setDevotionalExpanded] = useState(false)
+  const todaysDevotional: Devotional = getTodaysDevotional()
   const fadeAnim = useRef(new Animated.Value(0)).current
   const scaleAnim = useRef(new Animated.Value(0.8)).current
   const pulseAnim = useRef(new Animated.Value(1)).current
@@ -102,9 +106,7 @@ export default function App() {
 
     return () => {
       subscription.remove()
-      if (soundRef.current) {
-        soundRef.current.unloadAsync()
-      }
+      audioPlayer.pause()
     }
   }, [])
 
@@ -318,6 +320,12 @@ export default function App() {
         console.log("Audio file not found for track:", trackToPlay)
         return
       }
+
+      // Allow audio to play through silent switch and in background on iOS
+      await setAudioModeAsync({
+        playsInSilentMode: true,
+        shouldDuckAndroid: true
+      })
 
       // Replace the audio source and play
       audioPlayer.replace(selectedAudio)
@@ -755,6 +763,16 @@ export default function App() {
                 {wordDefinitionsEnabled && <Feather name="book" size={14} color="rgba(255, 255, 255, 0.5)" style={{ marginLeft: 6 }} />}
               </View>
               <Text style={styles.versionBadge}>{bibleVersion.toUpperCase()}</Text>
+              <TouchableOpacity
+                style={styles.viewInContextButton}
+                onPress={() => {
+                  setBibleInitialRef(verse.reference)
+                  setCurrentScreen("bible")
+                }}
+              >
+                <Feather name="book-open" size={12} color="rgba(255, 255, 255, 0.8)" />
+                <Text style={styles.viewInContextText}>View in context</Text>
+              </TouchableOpacity>
             </Animated.View>
           </ScrollView>
         ) : null}
@@ -788,6 +806,38 @@ export default function App() {
           {renderWallpaperContent(verse.text, verse.reference)}
         </View>
       )}
+
+      {/* Daily Devotional Card */}
+      <TouchableOpacity style={styles.devotionalCard} onPress={() => setDevotionalExpanded(prev => !prev)} activeOpacity={0.85}>
+        <View style={styles.devotionalCardHeader}>
+          <View style={styles.devotionalCardTitleRow}>
+            <Feather name="book" size={14} color="rgba(255,255,255,0.75)" />
+            <Text style={styles.devotionalCardLabel}>Today's Devotional</Text>
+          </View>
+          <Feather name={devotionalExpanded ? "chevron-up" : "chevron-down"} size={16} color="rgba(255,255,255,0.6)" />
+        </View>
+        <Text style={styles.devotionalCardTitle}>{todaysDevotional.title}</Text>
+
+        {devotionalExpanded && (
+          <View style={styles.devotionalCardBody}>
+            <View style={styles.devotionalVerseBlock}>
+              <Text style={styles.devotionalVerseText}>"{todaysDevotional.verseText}"</Text>
+              <Text style={styles.devotionalVerseRef}>{todaysDevotional.verseRef}</Text>
+            </View>
+            <Text style={styles.devotionalReflection}>{todaysDevotional.reflection}</Text>
+            <TouchableOpacity
+              style={styles.devotionalContextButton}
+              onPress={() => {
+                setBibleInitialRef(todaysDevotional.verseRef.includes(":") ? todaysDevotional.verseRef : null)
+                setCurrentScreen("bible")
+              }}
+            >
+              <Feather name="book-open" size={12} color="rgba(255,255,255,0.85)" />
+              <Text style={styles.devotionalContextText}>Read in Bible</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+      </TouchableOpacity>
     </ScrollView>
   )
 
@@ -1131,7 +1181,7 @@ export default function App() {
 
       {currentScreen === "home" && renderHome()}
       {currentScreen === "favorites" && renderFavorites()}
-      {currentScreen === "bible" && <BibleReader onSaveVerse={handleSaveFromBible} fontStyle={bibleFontStyle} themeColor={backgroundColor} />}
+      {currentScreen === "bible" && <BibleReader onSaveVerse={handleSaveFromBible} fontStyle={bibleFontStyle} themeColor={backgroundColor} initialReference={bibleInitialRef} initialVersion={bibleVersion} onInitialNavigationDone={() => setBibleInitialRef(null)} />}
       {currentScreen === "topics" && renderTopics()}
       {currentScreen === "settings" && renderSettings()}
 
@@ -1588,6 +1638,101 @@ const styles = StyleSheet.create({
     marginTop: 8,
     textAlign: "center",
     letterSpacing: 1
+  },
+  viewInContextButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    alignSelf: "center",
+    marginTop: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.3)",
+    gap: 5
+  },
+  viewInContextText: {
+    fontSize: 12,
+    color: "rgba(255, 255, 255, 0.8)",
+    fontWeight: "500"
+  },
+  devotionalCard: {
+    marginHorizontal: 20,
+    marginTop: 12,
+    marginBottom: 20,
+    backgroundColor: "rgba(255, 255, 255, 0.1)",
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.18)",
+    padding: 16
+  },
+  devotionalCardHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between"
+  },
+  devotionalCardTitleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6
+  },
+  devotionalCardLabel: {
+    fontSize: 11,
+    fontWeight: "600",
+    color: "rgba(255, 255, 255, 0.6)",
+    letterSpacing: 0.8,
+    textTransform: "uppercase"
+  },
+  devotionalCardTitle: {
+    fontSize: 17,
+    fontWeight: "700",
+    color: "#ffffff",
+    marginTop: 6
+  },
+  devotionalCardBody: {
+    marginTop: 14
+  },
+  devotionalVerseBlock: {
+    backgroundColor: "rgba(0,0,0,0.12)",
+    borderRadius: 10,
+    padding: 12,
+    marginBottom: 12
+  },
+  devotionalVerseText: {
+    fontSize: 14,
+    fontStyle: "italic",
+    color: "rgba(255, 255, 255, 0.92)",
+    lineHeight: 22
+  },
+  devotionalVerseRef: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: "rgba(255, 255, 255, 0.55)",
+    marginTop: 6,
+    textAlign: "right",
+    letterSpacing: 0.4
+  },
+  devotionalReflection: {
+    fontSize: 14,
+    color: "rgba(255, 255, 255, 0.82)",
+    lineHeight: 22
+  },
+  devotionalContextButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    alignSelf: "flex-start",
+    marginTop: 14,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.3)",
+    gap: 5
+  },
+  devotionalContextText: {
+    fontSize: 12,
+    color: "rgba(255, 255, 255, 0.85)",
+    fontWeight: "500"
   },
   versionGrid: {
     gap: 12,
