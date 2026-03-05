@@ -25,7 +25,7 @@ interface BibleReaderProps {
 }
 
 export default function BibleReader({ onSaveVerse, fontStyle = "sans-serif", themeColor = "#4a7c7e", initialReference, initialVersion, onInitialNavigationDone }: BibleReaderProps) {
-  const [viewMode, setViewMode] = useState<ViewMode>("version-picker")
+  const [viewMode, setViewMode] = useState<ViewMode>(initialReference ? "verses" : "version-picker")
   const [selectedVersion, setSelectedVersion] = useState<BibleVersion>("kjv")
   const [downloadedVersions, setDownloadedVersions] = useState<BibleVersion[]>([])
   const [downloadingVersion, setDownloadingVersion] = useState<BibleVersion | null>(null)
@@ -69,7 +69,14 @@ export default function BibleReader({ onSaveVerse, fontStyle = "sans-serif", the
     const bookName = bookChapter.substring(0, lastSpaceIdx).trim()
     const chapterNum = parseInt(bookChapter.substring(lastSpaceIdx + 1), 10)
     if (isNaN(verseNum) || isNaN(chapterNum)) return
-    const bookIndex = BOOK_NAMES.indexOf(bookName)
+    // Normalize book name variants returned by different Bible APIs
+    let normalizedBookName = bookName
+    if (normalizedBookName === "Psalm") normalizedBookName = "Psalms"
+    if (normalizedBookName === "Song Of Solomon") normalizedBookName = "Song of Solomon"
+    if (normalizedBookName === "Song of Songs") normalizedBookName = "Song of Solomon"
+    if (normalizedBookName === "Song Of Songs") normalizedBookName = "Song of Solomon"
+    if (normalizedBookName === "Revelation") normalizedBookName = "Revelation" // already correct, keep for clarity
+    const bookIndex = BOOK_NAMES.indexOf(normalizedBookName)
     if (bookIndex === -1) return
 
     const targetVersion = (version as BibleVersion) || selectedVersion
@@ -77,9 +84,9 @@ export default function BibleReader({ onSaveVerse, fontStyle = "sans-serif", the
       await saveSelectedVersion(targetVersion)
     }
 
-    const chapterCount = getDefaultChapterCount(bookName)
+    const chapterCount = getDefaultChapterCount(normalizedBookName)
     setSelectedBookIndex(bookIndex)
-    setSelectedBookName(bookName)
+    setSelectedBookName(normalizedBookName)
     setSelectedChapterCount(chapterCount)
     setSelectedChapterIndex(chapterNum - 1)
     setHighlightedVerse(verseNum - 1)
@@ -97,7 +104,7 @@ export default function BibleReader({ onSaveVerse, fontStyle = "sans-serif", the
         setLoadError(true)
       }
     } else {
-      const verses = await fetchChapterFromAPI(bookName, chapterNum, targetVersion)
+      const verses = await fetchChapterFromAPI(normalizedBookName, chapterNum, targetVersion)
       if (!verses) {
         setLoadError(true)
       }
