@@ -38,7 +38,7 @@ export default function BibleReader({ onSaveVerse, fontStyle = "sans-serif", the
   const [testament, setTestament] = useState<"all" | "old" | "new">("all")
   const [books, setBooks] = useState<BibleBook[]>([])
   const [chapterVerses, setChapterVerses] = useState<string[] | null>(null)
-  const [loading, setLoading] = useState(false)
+  const [loading, setLoading] = useState<boolean>(!!initialReference)
   const [loadError, setLoadError] = useState(false)
   const [verseSearchResults, setVerseSearchResults] = useState<VerseSearchResult[]>([])
   const [searching, setSearching] = useState(false)
@@ -61,14 +61,14 @@ export default function BibleReader({ onSaveVerse, fontStyle = "sans-serif", the
   const navigateToReference = async (reference: string, version?: string) => {
     // Parse reference e.g. "John 3:16", "1 Corinthians 13:4", "Song of Solomon 2:10"
     const colonIdx = reference.lastIndexOf(":")
-    if (colonIdx === -1) return
+    if (colonIdx === -1) { setLoading(false); return }
     const verseNum = parseInt(reference.substring(colonIdx + 1), 10)
     const bookChapter = reference.substring(0, colonIdx).trim()
     const lastSpaceIdx = bookChapter.lastIndexOf(" ")
-    if (lastSpaceIdx === -1) return
+    if (lastSpaceIdx === -1) { setLoading(false); return }
     const bookName = bookChapter.substring(0, lastSpaceIdx).trim()
     const chapterNum = parseInt(bookChapter.substring(lastSpaceIdx + 1), 10)
-    if (isNaN(verseNum) || isNaN(chapterNum)) return
+    if (isNaN(verseNum) || isNaN(chapterNum)) { setLoading(false); return }
     // Normalize book name variants returned by different Bible APIs
     let normalizedBookName = bookName
     if (normalizedBookName === "Psalm") normalizedBookName = "Psalms"
@@ -77,7 +77,7 @@ export default function BibleReader({ onSaveVerse, fontStyle = "sans-serif", the
     if (normalizedBookName === "Song Of Songs") normalizedBookName = "Song of Solomon"
     if (normalizedBookName === "Revelation") normalizedBookName = "Revelation" // already correct, keep for clarity
     const bookIndex = BOOK_NAMES.indexOf(normalizedBookName)
-    if (bookIndex === -1) return
+    if (bookIndex === -1) { setLoading(false); return }
 
     const targetVersion = (version as BibleVersion) || selectedVersion
     if (targetVersion !== selectedVersion) {
@@ -94,21 +94,28 @@ export default function BibleReader({ onSaveVerse, fontStyle = "sans-serif", the
     setViewMode("verses")
     setLoading(true)
     setLoadError(false)
+    setChapterVerses(null)
 
     const downloaded = await isVersionDownloaded(targetVersion)
+    let versesToSet: string[] | null = null
+
     if (downloaded) {
       const data = await loadBibleData(targetVersion)
-      if (data[bookIndex] && data[bookIndex].chapters[chapterNum - 1]) {
-        setChapterVerses(data[bookIndex].chapters[chapterNum - 1])
-      } else {
-        setLoadError(true)
+      const cachedChapter = data[bookIndex]?.chapters[chapterNum - 1]
+      if (cachedChapter && cachedChapter.length > 0) {
+        versesToSet = cachedChapter
       }
+    }
+
+    // Fall back to API if not downloaded or cached chapter was empty (failed during download)
+    if (!versesToSet) {
+      versesToSet = await fetchChapterFromAPI(normalizedBookName, chapterNum, targetVersion)
+    }
+
+    if (!versesToSet || versesToSet.length === 0) {
+      setLoadError(true)
     } else {
-      const verses = await fetchChapterFromAPI(normalizedBookName, chapterNum, targetVersion)
-      if (!verses) {
-        setLoadError(true)
-      }
-      setChapterVerses(verses)
+      setChapterVerses(versesToSet)
     }
 
     setLoading(false)
@@ -221,16 +228,27 @@ export default function BibleReader({ onSaveVerse, fontStyle = "sans-serif", the
     setLoading(true)
     setLoadError(false)
     setViewMode("verses")
+    setChapterVerses(null)
 
     const isDownloaded = downloadedVersions.includes(selectedVersion)
+    let versesToSet: string[] | null = null
+
     if (isDownloaded && books.length > 0) {
-      setChapterVerses(books[result.bookIndex].chapters[result.chapterIndex] || null)
-    } else {
-      const verses = await fetchChapterFromAPI(result.bookName, result.chapterIndex + 1, selectedVersion)
-      if (!verses) {
-        setLoadError(true)
+      const cachedChapter = books[result.bookIndex]?.chapters[result.chapterIndex]
+      if (cachedChapter && cachedChapter.length > 0) {
+        versesToSet = cachedChapter
       }
-      setChapterVerses(verses)
+    }
+
+    // Fall back to API if not downloaded or cached chapter was empty
+    if (!versesToSet) {
+      versesToSet = await fetchChapterFromAPI(result.bookName, result.chapterIndex + 1, selectedVersion)
+    }
+
+    if (!versesToSet || versesToSet.length === 0) {
+      setLoadError(true)
+    } else {
+      setChapterVerses(versesToSet)
     }
 
     setLoading(false)
@@ -243,22 +261,28 @@ export default function BibleReader({ onSaveVerse, fontStyle = "sans-serif", the
     setLoading(true)
     setLoadError(false)
     setViewMode("verses")
+    setChapterVerses(null)
 
     const isDownloaded = downloadedVersions.includes(selectedVersion)
+    let versesToSet: string[] | null = null
 
     if (isDownloaded && selectedBookIndex !== null) {
-      // Load from downloaded data
       const data = await loadBibleData(selectedVersion)
-      if (data[selectedBookIndex]) {
-        setChapterVerses(data[selectedBookIndex].chapters[chapterIndex] || null)
+      const cachedChapter = data[selectedBookIndex]?.chapters[chapterIndex]
+      if (cachedChapter && cachedChapter.length > 0) {
+        versesToSet = cachedChapter
       }
+    }
+
+    // Fall back to API if not downloaded or cached chapter was empty (failed during download)
+    if (!versesToSet) {
+      versesToSet = await fetchChapterFromAPI(selectedBookName, chapterIndex + 1, selectedVersion)
+    }
+
+    if (!versesToSet || versesToSet.length === 0) {
+      setLoadError(true)
     } else {
-      // Fetch from API
-      const verses = await fetchChapterFromAPI(selectedBookName, chapterIndex + 1, selectedVersion)
-      if (!verses) {
-        setLoadError(true)
-      }
-      setChapterVerses(verses)
+      setChapterVerses(versesToSet)
     }
 
     setLoading(false)
