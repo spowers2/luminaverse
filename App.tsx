@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react"
 import { StyleSheet, Text, View, TouchableOpacity, ScrollView, RefreshControl, Animated, Alert, Share, Modal, FlatList, Switch, Platform, Linking } from "react-native"
 import { StatusBar } from "expo-status-bar"
+import * as Updates from "expo-updates"
 import { Feather } from "@expo/vector-icons"
 import AsyncStorage from "@react-native-async-storage/async-storage"
 import * as Notifications from "expo-notifications"
@@ -37,6 +38,21 @@ Notifications.setNotificationHandler({
 })
 
 export default function App() {
+  // Check for OTA updates and apply immediately
+  useEffect(() => {
+    if (__DEV__) return
+    async function applyUpdate() {
+      try {
+        const check = await Updates.checkForUpdateAsync()
+        if (check.isAvailable) {
+          await Updates.fetchUpdateAsync()
+          await Updates.reloadAsync()
+        }
+      } catch (_) {}
+    }
+    applyUpdate()
+  }, [])
+
   const [verse, setVerse] = useState<Verse | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
