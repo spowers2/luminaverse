@@ -1150,15 +1150,6 @@ export default function App() {
       </View>
 
       <View style={styles.aboutSection}>
-        <Text style={styles.aboutSectionTitle}>Support Development</Text>
-        <Text style={styles.aboutText}>LuminaVerse is completely free with no ads or paywalls. If you find it valuable and would like to support continued development, you can leave an optional donation. Thank you for using LuminaVerse! 🙏</Text>
-        <TouchableOpacity onPress={() => Linking.openURL("https://square.link/u/kaGQJGzZ")} style={[styles.donationButton, { backgroundColor: backgroundColor }]}>
-          <Feather name="heart" size={20} color="#fff" />
-          <Text style={styles.donationButtonText}>Support via Donation</Text>
-        </TouchableOpacity>
-      </View>
-
-      <View style={styles.aboutSection}>
         <Text style={styles.aboutSectionTitle}>About LuminaVerse</Text>
         <Text style={styles.aboutText}>LuminaVerse provides daily inspiration through randomly selected Bible verses. Experience scripture in a beautiful, distraction-free interface.</Text>
       </View>
@@ -1556,25 +1547,7 @@ const styles = StyleSheet.create({
     fontWeight: "500",
     color: "#fff"
   },
-  donationButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
-    padding: 16,
-    borderRadius: 12,
-    marginTop: 12,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 4,
-    elevation: 3
-  },
-  donationButtonText: {
-    fontSize: 16,
-    fontWeight: "600",
-    color: "#fff"
-  },
+
   streakBadge: {
     flexDirection: "row",
     alignItems: "center",

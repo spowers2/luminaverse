@@ -74,11 +74,7 @@ We believe spiritual growth should be accessible to everyone. LuminaVerse is com
 • Sharing faith with others
 • Building consistent spiritual habits
 
-**💝 SUPPORT OUR MISSION**
-
-If LuminaVerse has blessed your life, consider supporting our mission through an optional donation. Your generosity helps us maintain and improve the app for everyone.
-
-**📱 PRIVACY FIRST**
+** PRIVACY FIRST**
 
 Your data stays on your device. We don't collect personal information, track your reading, or share your data with third parties. Read in peace knowing your privacy is protected.
 
@@ -251,13 +247,6 @@ Thank you for reviewing LuminaVerse! Here's what to expect:
 - App requests notification permission for daily verse reminders
 - Users can enable/disable in Settings
 - Default time: 8:00 AM (customizable)
-
-**Donations:**
-
-- Optional donation link in Settings
-- Processed through Square (external)
-- Not an in-app purchase (IAP)
-- Clearly labeled as optional support
 
 **Network Usage:**
 
